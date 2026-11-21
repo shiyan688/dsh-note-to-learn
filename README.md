@@ -8,6 +8,16 @@
 
 ## 在 Windows 安装
 
+在 DSH Desktop 的插件管理中选择官方 npm 注册表，搜索 `dsh-note-to-learn`。如果已经注册了 `dsh` 命令，也可以完全退出 Desktop 后在 PowerShell 中运行：
+
+```powershell
+dsh plugin --profile desktop add dsh-note-to-learn@0.1.3
+```
+
+[查看 npm 安装包](https://www.npmjs.com/package/dsh-note-to-learn/v/0.1.3)
+
+### 从 GitHub 安装
+
 从 [GitHub Releases](https://github.com/shiyan688/dsh-note-to-learn/releases) 下载 `dsh-note-to-learn-0.1.3.tgz`。插件面向官方 DSH Desktop 0.2.2 候选版本。先启动一次 Desktop 初始化，再在插件管理中添加下载的安装包。
 
 如果已通过 Desktop 注册 `dsh` 命令，也可以完全退出 Desktop，在安装包所在目录执行以下命令。

@@ -8,6 +8,16 @@
 
 ## Install on Windows
 
+Open the DSH Desktop plug-in manager, choose the official npm registry, and search for `dsh-note-to-learn`. If Desktop has registered the `dsh` command, close Desktop and run the following in PowerShell.
+
+```powershell
+dsh plugin --profile desktop add dsh-note-to-learn@0.1.3
+```
+
+[View the npm package](https://www.npmjs.com/package/dsh-note-to-learn/v/0.1.3)
+
+### Install from GitHub
+
 The plug-in targets DSH Desktop 0.2.2 release candidates. Open Desktop once to initialize its profile. Download the installation package from [GitHub Releases](https://github.com/shiyan688/dsh-note-to-learn/releases) and add it from the Desktop plug-in manager. If DSH Desktop has registered the `dsh` command, you can also close Desktop and install the downloaded package from PowerShell.
 
 ```powershell
