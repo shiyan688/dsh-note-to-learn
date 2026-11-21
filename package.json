@@ -1,7 +1,15 @@
 {
   "name": "dsh-note-to-learn",
-  "version": "0.1.2",
-  "description": "DeepSeek Harness 学习笔记，摘录网页和 PDF，圈选提问，再把回答放回纸面。",
+  "version": "0.1.3",
+  "description": "Capture web and PDF excerpts, ask AI about selections, and save replies in editable DeepSeek Harness notes.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shiyan688/dsh-note-to-learn.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shiyan688/dsh-note-to-learn/issues"
+  },
+  "homepage": "https://github.com/shiyan688/dsh-note-to-learn#readme",
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
@@ -20,6 +28,7 @@
     "lib/ocr-worker.js",
     "cordis.patch.yml",
     "README.md",
+    "README.en.md",
     "LICENSE"
   ],
   "engines": {

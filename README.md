@@ -1,18 +1,24 @@
 # dsh-note-to-learn
 
+[English](README.en.md) · [35 秒实机演示](https://www.bilibili.com/video/BV1eoyhz6EUp/)
+
 在 DeepSeek Harness 的右侧栏读资料、手写和整理笔记。把网页、PDF 或纸面选区放进当前 DSH 对话，选中有用的回答再放回纸面。
+
+![网页文字右键加入对话草稿](docs/images/capture-web.jpg)
 
 ## 在 Windows 安装
 
-从 [v0.1.2 发布页](https://github.com/shiyan688/dsh-note-to-learn/releases/tag/v0.1.2) 下载 `dsh-note-to-learn-0.1.2.tgz`。插件已在官方 DSH Desktop `0.2.2-rc.5` 上验证。先启动一次 Desktop 初始化，再在插件管理中添加下载的安装包。
+从 [GitHub Releases](https://github.com/shiyan688/dsh-note-to-learn/releases) 下载 `dsh-note-to-learn-0.1.3.tgz`。插件面向官方 DSH Desktop 0.2.2 候选版本。先启动一次 Desktop 初始化，再在插件管理中添加下载的安装包。
 
 如果已通过 Desktop 注册 `dsh` 命令，也可以完全退出 Desktop，在安装包所在目录执行以下命令。
 
 ```powershell
-dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.2.tgz'
+dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.3.tgz'
 ```
 
 重新打开 Desktop，进入一个有工作区的会话，在右侧栏的工具列表选择 **学习笔记**。左侧栏底部也提供 **学习笔记** 入口。
+
+在学习笔记工具栏的 **语言 / Language** 下拉框选择 **简体中文** 或 **English**。菜单、对话框和新生成的追问建议会使用所选语言。已有笔记正文与标题保留原文。
 
 ## 阅读、提问和摘录
 

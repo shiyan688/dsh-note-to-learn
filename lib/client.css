@@ -3,6 +3,7 @@
 .ntl-workspace-bar,.ntl-pagebar,.ntl-bookpick,.ntl-placement{display:flex;gap:8px;align-items:center}
 .ntl-workspace-bar{position:relative;z-index:14;padding:10px 12px;border-bottom:1px solid var(--ntl-line);flex-wrap:wrap}
 .ntl-workspace-bar strong{margin-inline-end:auto;line-height:28px;font-size:15px;letter-spacing:.02em}
+.ntl-language{color:inherit;background:var(--ntl-panel);border:1px solid var(--ntl-line);border-radius:6px;padding:4px 6px;font:inherit}
 .ntl-workspace-grid{display:grid;grid-template-columns:minmax(124px,190px) minmax(0,1fr);flex:1;min-height:0}
 .ntl-library{min-width:0;min-height:0;display:flex;flex-direction:column;gap:8px;padding:10px;border-right:1px solid var(--ntl-line);overflow:auto;background:#f7f3e9}
 .ntl-bookpick{align-items:stretch}
