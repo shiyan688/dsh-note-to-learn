@@ -1,0 +1,66 @@
+{
+  "name": "dsh-note-to-learn",
+  "version": "0.1.2",
+  "description": "DeepSeek Harness 学习笔记，摘录网页和 PDF，圈选提问，再把回答放回纸面。",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./dist/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/client.js",
+    "lib/index.js",
+    "lib/note-tools.js",
+    "lib/store.js",
+    "lib/ocr.js",
+    "lib/ocr-worker.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.19.0",
+    "dsh": ">=0.2.2-rc.1 <0.3.0-0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/*.test.mjs",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@tesseract.js-data/chi_sim": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
+    "pdfjs-dist": "5.4.624",
+    "tesseract.js-core": "7.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "fflate": "0.8.3",
+    "katex": "0.19.1",
+    "markdown-it": "15.0.3",
+    "pdf-lib": "1.17.1"
+  },
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "notes",
+    "pdf",
+    "windows"
+  ]
+}
