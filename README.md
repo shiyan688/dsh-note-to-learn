@@ -55,3 +55,5 @@ npm pack
 ```
 
 浏览器入口由 esbuild 构建。前端通过 DSH 认证连接读写笔记，PDF.js 资源和 OCR 语言数据随依赖分发。项目遵循 MIT。PDF.js、Tesseract 及其他依赖由各自的分发包提供许可。
+
+修改前端后运行 `npm run build`，并随源码提交重新生成的 `dist/client.js`。从 GitHub 源码安装的插件市场会直接使用这个文件。

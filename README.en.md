@@ -51,3 +51,5 @@ npm pack
 ```
 
 The browser bundle is built with esbuild. The client talks to the host through DSH's authenticated connection. PDF.js resources and OCR language data are installed as dependencies. See [LICENSE](LICENSE) for the plug-in license. Dependencies carry their own licenses.
+
+After changing the client, run `npm run build` and commit the regenerated `dist/client.js` alongside the source. Plugin markets that install from GitHub use that file directly.
