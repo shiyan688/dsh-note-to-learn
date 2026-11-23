@@ -4534,7 +4534,13 @@
     "\u65E0\u6CD5\u8BFB\u53D6\u8FD9\u5F20\u56FE\u7247\u3002": "Could not read this image.",
     "\u6B63\u5728\u8BC6\u522B\u4E0A\u4E00\u5F20\u56FE\u7247\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002": "OCR is already running. Try again in a moment.",
     "\u56FE\u7247\u8D85\u51FA\u5355\u6B21\u8BC6\u522B\u5927\u5C0F\u4E0A\u9650\u3002": "The image exceeds the OCR file size limit.",
-    "\u56FE\u7247\u5C3A\u5BF8\u8D85\u51FA\u8BC6\u522B\u4E0A\u9650\uFF0C\u8BF7\u7F29\u5C0F\u6216\u5206\u5757\u622A\u56FE\u3002": "The image dimensions exceed the OCR limit. Resize it or capture smaller regions."
+    "\u56FE\u7247\u5C3A\u5BF8\u8D85\u51FA\u8BC6\u522B\u4E0A\u9650\uFF0C\u8BF7\u7F29\u5C0F\u6216\u5206\u5757\u622A\u56FE\u3002": "The image dimensions exceed the OCR limit. Resize it or capture smaller regions.",
+    "\u5206\u533A": "Sections",
+    "\u641C\u7D22\u7ED3\u679C": "Search results",
+    "\u8FD9\u91CC\u8FD8\u6CA1\u6709\u9875\u9762": "No pages here yet",
+    "\u5F62\u72B6": "Shapes",
+    "\u683C\u5F0F": "Format",
+    "\u7EB8\u9762\u7F29\u653E": "Page zoom"
   };
 
   // lib/i18n.js
@@ -67260,7 +67266,6 @@
   var PAGE_WIDTH = 820;
   var PAGE_HEIGHT = 1120;
   var MAX_SIDE = 8192;
-  var PAPER_GUTTER = 24;
   var MAX_UNDO = 30;
   var IMAGE_DATA = /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp);base64,/i;
   var ALLOWED_ELEMENTS = /* @__PURE__ */ new Set([
@@ -67313,11 +67318,9 @@
     ["pen", "\u753B\u7B14"],
     ["highlight", "\u8367\u5149\u7B14"],
     ["eraser", "\u6A61\u76AE"],
-    ["lasso", "\u5957\u7D22"],
-    ["line", "\u76F4\u7EBF"],
-    ["rectangle", "\u77E9\u5F62"],
-    ["ellipse", "\u692D\u5706"]
+    ["lasso", "\u5957\u7D22"]
   ];
+  var SHAPES = [["line", "\u76F4\u7EBF"], ["rectangle", "\u77E9\u5F62"], ["ellipse", "\u692D\u5706"]];
   var markdown = new MarkdownItCallable({ html: false, breaks: true, linkify: true });
   markdown.renderer.rules.image = (tokens, index) => markdown.utils.escapeHtml(tokens[index].content);
   markdown.renderer.rules.math_inline = (tokens, index) => formula(tokens[index].content, false);
@@ -67649,7 +67652,7 @@
   function colorFor(text3, fallback) {
     return /^#[\da-f]{6}$/i.test(text3 ?? "") ? text3 : fallback;
   }
-  function mountPaper(root, { page: initialPage, onChange = () => {
+  function mountPaper(root, { page: initialPage, controlsRoot, onChange = () => {
   }, onAsk, onError, onSource } = {}) {
     const doc = root.ownerDocument;
     const win = doc.defaultView;
@@ -67657,6 +67660,7 @@
     const listener = { signal: controller.signal };
     let page = normalizedPage(initialPage ?? { id: identifier(), title: "" });
     let mode = "select";
+    let showFormat = false;
     let currentId = null;
     let polygon = [];
     let zoom = null;
@@ -67676,10 +67680,11 @@
     const container = element3(doc, "section", "nl-paper");
     container.setAttribute("aria-label", t("\u7B14\u8BB0\u7EB8\u9762"));
     const toolbar = element3(doc, "div", "nl-paper-toolbar");
-    toolbar.setAttribute("role", "toolbar");
+    toolbar.setAttribute("role", "group");
     toolbar.setAttribute("aria-label", t("\u7B14\u8BB0\u7EB8\u9762\u5DE5\u5177"));
     const formatBar = element3(doc, "div", "nl-paper-format");
-    formatBar.setAttribute("role", "toolbar");
+    formatBar.id = `nl-format-${identifier()}`;
+    formatBar.setAttribute("role", "group");
     formatBar.setAttribute("aria-label", t("\u6587\u5B57\u683C\u5F0F"));
     const viewport = element3(doc, "div", "nl-paper-viewport");
     const sheetFrame = element3(doc, "div", "nl-paper-sheet-frame");
@@ -67736,20 +67741,53 @@
       group.append(control);
       return control;
     }
-    const toolButtons = new Map(TOOLS.map(([key, label2]) => [key, button3(toolbar, t(label2), () => selectTool(key))]));
+    const tools = element3(doc, "div", "nl-paper-tools");
+    const toolButtons = new Map(TOOLS.map(([key, label2]) => [key, button3(tools, t(label2), () => selectTool(key))]));
+    const shapes = element3(doc, "details", "ntl-menu nl-paper-shapes");
+    shapes.dataset.ntlMenu = "";
+    const shapesSummary = element3(doc, "summary", "", t("\u5F62\u72B6"));
+    const shapeItems = element3(doc, "div", "ntl-menu-items");
+    for (const [key, label2] of SHAPES) {
+      toolButtons.set(key, button3(shapeItems, t(label2), () => {
+        selectTool(key);
+        shapes.open = false;
+        shapesSummary.focus({ preventScroll: true });
+      }));
+    }
+    shapes.append(shapesSummary, shapeItems);
+    tools.append(shapes);
     const editActions = element3(doc, "div", "nl-paper-actions");
-    const attach = button3(editActions, t("\u63D2\u5165\u56FE\u7247\uFF0F\u9644\u4EF6"), () => fileInput.click());
+    const formatToggle = button3(editActions, t("\u683C\u5F0F"), () => {
+      showFormat = !showFormat;
+      updateControls();
+    }, t("\u6587\u5B57\u683C\u5F0F"), true);
+    formatToggle.setAttribute("aria-controls", formatBar.id);
+    const attach = button3(editActions, t("\u9644\u4EF6"), () => fileInput.click(), t("\u63D2\u5165\u56FE\u7247\u6216\u6587\u4EF6\u9644\u4EF6"));
     attach.setAttribute("aria-label", t("\u63D2\u5165\u56FE\u7247\u6216\u6587\u4EF6\u9644\u4EF6"));
-    const undoButton = button3(editActions, t("\u64A4\u9500"), undo, t("\u64A4\u9500 (Ctrl+Z)"));
-    const redoButton = button3(editActions, t("\u91CD\u505A"), redo, t("\u91CD\u505A (Ctrl+Y)"));
+    const undoButton = button3(editActions, "\u21B6", undo, t("\u64A4\u9500 (Ctrl+Z)"));
+    const redoButton = button3(editActions, "\u21B7", redo, t("\u91CD\u505A (Ctrl+Y)"));
+    undoButton.classList.add("nl-paper-history");
+    redoButton.classList.add("nl-paper-history");
+    undoButton.setAttribute("aria-label", t("\u64A4\u9500"));
+    redoButton.setAttribute("aria-label", t("\u91CD\u505A"));
+    const removeButton = button3(editActions, "", removeSelected, t("\u5220\u9664\u9009\u4E2D\u7684\u5BF9\u8C61\u6216\u7B14\u8FF9"));
+    removeButton.classList.add("nl-paper-delete");
+    removeButton.setAttribute("aria-label", t("\u5220\u9664\u9009\u4E2D"));
     const askButton = onAsk ? button3(editActions, t("\u9009\u533A\u95EE AI"), askSelection, t("\u628A\u9009\u533A\u52A0\u5165\u5F53\u524D DSH \u5BF9\u8BDD\u8349\u7A3F"), true) : null;
-    const removeButton = button3(editActions, t("\u5220\u9664\u9009\u4E2D"), removeSelected, t("\u5220\u9664\u9009\u4E2D\u7684\u5BF9\u8C61\u6216\u7B14\u8FF9"));
+    askButton?.classList.add("nl-paper-ask");
+    const penSettings = element3(doc, "div", "nl-paper-pen");
+    penSettings.append(color, size);
     const zoomGroup = element3(doc, "div", "nl-paper-zoom");
-    button3(zoomGroup, "\u2212", () => setZoom(scale2 - 0.1), t("\u7F29\u5C0F\u7EB8\u9762"));
+    zoomGroup.setAttribute("role", "group");
+    zoomGroup.setAttribute("aria-label", t("\u7EB8\u9762\u7F29\u653E"));
+    const zoomOut = button3(zoomGroup, "\u2212", () => setZoom(scale2 / 1.18), t("\u7F29\u5C0F\u7EB8\u9762"));
     const zoomDisplay = button3(zoomGroup, t("\u9002\u5BBD"), () => setZoom(null), t("\u9002\u5408\u4FA7\u680F\u5BBD\u5EA6"));
-    button3(zoomGroup, "+", () => setZoom(scale2 + 0.1), t("\u653E\u5927\u7EB8\u9762"));
+    const zoomIn = button3(zoomGroup, "+", () => setZoom(scale2 * 1.18), t("\u653E\u5927\u7EB8\u9762"));
+    zoomOut.setAttribute("aria-label", t("\u7F29\u5C0F\u7EB8\u9762"));
+    zoomIn.setAttribute("aria-label", t("\u653E\u5927\u7EB8\u9762"));
     button3(zoomGroup, t("\u52A0\u957F\u7EB8\u9762"), extendPage, t("\u5728\u81EA\u7531\u753B\u5E03\u4E0B\u65B9\u589E\u52A0\u7A7A\u95F4"));
-    toolbar.append(color, size, editActions, zoomGroup);
+    controlsRoot?.append(zoomGroup);
+    toolbar.append(tools, editActions);
     const formatting = [
       [t("\u7C97\u4F53"), "bold"],
       [t("\u659C\u4F53"), "italic"],
@@ -67801,18 +67839,20 @@
     sheet.append(paperBackground, objects, ink, selectionInk);
     sheetFrame.append(sheet);
     viewport.append(sheetFrame);
-    container.append(toolbar, formatBar, linkBox, viewport, live, fileInput);
+    container.append(toolbar, penSettings, formatBar, linkBox, viewport, live, fileInput);
     root.replaceChildren(container);
     function selectTool(tool) {
       if (gesture) cancelGesture();
       flushEdits();
       focusedEditor?.blur();
+      if (mode !== tool) showFormat = tool === "text";
       mode = tool;
       if (mode !== "select" && mode !== "lasso") {
         polygon = [];
         currentId = null;
       }
       if (mode !== "select" && mode !== "text") {
+        linkBox.hidden = true;
         for (const editor of objects.querySelectorAll(".nl-paper-markdown-source:not([hidden])")) {
           editor.previousElementSibling.click();
         }
@@ -67822,9 +67862,14 @@
     }
     function updateControls() {
       for (const [key, control] of toolButtons) control.setAttribute("aria-pressed", String(mode === key));
+      const isShape = SHAPES.some(([key]) => mode === key);
+      shapesSummary.dataset.active = String(isShape);
       sheet.dataset.tool = mode;
       objects.inert = mode !== "select" && mode !== "text";
-      formatBar.hidden = mode !== "select" && mode !== "text";
+      formatToggle.hidden = objects.inert;
+      formatBar.hidden = objects.inert || !showFormat;
+      formatToggle.setAttribute("aria-expanded", String(!formatBar.hidden));
+      penSettings.hidden = !isShape && !["pen", "highlight", "eraser"].includes(mode);
       color.value = mode === "highlight" ? highlighterColor : penColor;
       size.value = String(mode === "highlight" ? highlighterSize : mode === "eraser" ? eraserSize : penSize);
       color.disabled = mode === "eraser";
@@ -67835,13 +67880,14 @@
       for (const [id2, node] of blockNodes) node.classList.toggle("is-selected", id2 === currentId);
     }
     function setZoom(value) {
-      zoom = value === null ? null : clamp(value, 0.28, 2.5);
+      zoom = value === null ? null : clamp(value, Math.min(0.1, scale2), 2.5);
       resize();
     }
     function resize() {
       if (destroyed) return;
-      const available = viewport.clientWidth - 2 * PAPER_GUTTER;
-      scale2 = zoom ?? (available > 0 ? clamp(available / page.width, 0.34, 1) : 1);
+      const { paddingLeft, paddingRight } = win.getComputedStyle(viewport);
+      const available = viewport.clientWidth - parseFloat(paddingLeft) - parseFloat(paddingRight);
+      scale2 = zoom ?? (available > 0 ? Math.min(available / page.width, 1) : 1);
       sheet.style.width = `${page.width}px`;
       sheet.style.height = `${page.height}px`;
       sheet.style.transform = `scale(${scale2})`;
@@ -68738,6 +68784,7 @@
         destroyed = true;
         observer.disconnect();
         controller.abort();
+        zoomGroup.remove();
         container.remove();
       }
     };
@@ -69162,15 +69209,26 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
   var blank = (sectionId, title, parentId = null) => ({ id: id(), sectionId, title, parentId, tags: [], blocks: [], strokes: [] });
   function mountNotebook(root, { library, preview, getPending, setPending, openSource, openWeb, subscribePending, startupPageId, onPageChange }) {
     root.classList.add("ntl-notebook");
+    const view = root.ownerDocument.defaultView;
+    const lifetime = new view.AbortController();
     const toolbar = element2("div", { className: "ntl-workspace-bar" });
     const grid = element2("div", { className: "ntl-workspace-grid" });
-    const navigation = element2("nav", { className: "ntl-library", "aria-label": t("\u7B14\u8BB0\u76EE\u5F55") });
+    const navigation = element2("nav", { id: `ntl-library-${id()}`, className: "ntl-library", "aria-label": t("\u7B14\u8BB0\u76EE\u5F55") });
     const body = element2("section", { className: "ntl-document" });
     const titlebar = element2("div", { className: "ntl-pagebar" });
     const paperRoot = element2("div", { className: "ntl-paper-root" });
     const placement = element2("div", { className: "ntl-placement", hidden: "" });
-    const status = element2("div", { className: "ntl-status", role: "status" });
-    const navigationToggle = button2(t("\u76EE\u5F55"), () => grid.classList.toggle("ntl-show-library"), { className: "ntl-nav-toggle", "aria-label": t("\u5207\u6362\u7B14\u8BB0\u76EE\u5F55") });
+    const status = element2("div", { className: "ntl-status", role: "status", "aria-atomic": "true" });
+    const paperControls = element2("div", { className: "ntl-paper-controls" });
+    const footer = element2("footer", { className: "ntl-workspace-footer" }, status, paperControls);
+    const navigationToggle = button2(element2("span", { "aria-hidden": "true", className: "ntl-icon-library" }), () => {
+      setLibraryVisible(navigation.hidden);
+      if (!compact) wideLibraryVisible = !navigation.hidden;
+      if (compact && !navigation.hidden) {
+        const search = navigation.querySelector("input");
+        if (search) search.focus({ preventScroll: true });
+      }
+    }, { className: "ntl-icon-button", "aria-label": t("\u5207\u6362\u7B14\u8BB0\u76EE\u5F55"), "aria-controls": navigation.id, title: t("\u5207\u6362\u7B14\u8BB0\u76EE\u5F55") });
     const languagePicker = element2(
       "select",
       { className: "ntl-language", "aria-label": "\u8BED\u8A00 / Language" },
@@ -69181,14 +69239,55 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     languagePicker.addEventListener("change", () => setLanguage(languagePicker.value));
     grid.append(navigation, body);
     body.append(titlebar, placement, paperRoot);
-    root.replaceChildren(toolbar, grid, status);
+    root.replaceChildren(toolbar, grid, footer);
     let notebookId, sectionId, pageId, paper, mountedPage;
+    let compact;
+    let wideLibraryVisible = true;
     let query = "";
     let dragId;
     let alive = true;
     let importing = false;
     let applying = false;
     let busy = "";
+    function setLibraryVisible(visible) {
+      const hidesFocus = !visible && navigation.contains(document.activeElement) || compact && visible && body.contains(document.activeElement);
+      navigation.hidden = !visible;
+      body.hidden = Boolean(compact && visible);
+      paperControls.hidden = body.hidden;
+      root.dataset.library = visible ? "open" : "closed";
+      navigationToggle.setAttribute("aria-expanded", String(visible));
+      if (hidesFocus) navigationToggle.focus({ preventScroll: true });
+    }
+    function layout() {
+      const width = root.clientWidth;
+      if (!width) return;
+      const narrow = width < 590;
+      if (compact === narrow) return;
+      compact = narrow;
+      root.dataset.layout = compact ? "compact" : "wide";
+      setLibraryVisible(!compact && wideLibraryVisible);
+    }
+    const layoutObserver = new view.ResizeObserver(layout);
+    layoutObserver.observe(root);
+    layout();
+    document.addEventListener("pointerdown", (event) => {
+      for (const open2 of root.querySelectorAll("details[data-ntl-menu][open]")) {
+        if (!open2.contains(event.target)) open2.open = false;
+      }
+    }, { capture: true, signal: lifetime.signal });
+    root.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      const open2 = root.querySelector("details[data-ntl-menu][open]");
+      if (open2) {
+        open2.open = false;
+        open2.querySelector("summary").focus({ preventScroll: true });
+      } else if (compact && !navigation.hidden) {
+        setLibraryVisible(false);
+        navigationToggle.focus({ preventScroll: true });
+      } else return;
+      event.preventDefault();
+      event.stopPropagation();
+    }, { capture: true, signal: lifetime.signal });
     const showError = (cause) => toast(cause?.message ?? String(cause), true);
     const run = (action) => async (event) => {
       try {
@@ -69214,9 +69313,11 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       sectionId = page.sectionId;
       pageId = page.id;
       query = "";
-      grid.classList.remove("ntl-show-library");
+      const fromCompactLibrary = compact && !navigation.hidden;
+      if (fromCompactLibrary) setLibraryVisible(false);
       renderNavigation();
       renderPage(true);
+      if (fromCompactLibrary) titlebar.querySelector("h2")?.focus({ preventScroll: true });
     }
     const addNotebook = async () => {
       const title = await inputDialog(t("\u65B0\u5EFA\u7B14\u8BB0\u672C"), t("\u7B14\u8BB0\u672C\u540D\u79F0"));
@@ -69308,10 +69409,13 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       startupPageId = void 0;
       if (requested) select(requested);
     }
-    function menu(name2, entries, options = {}) {
-      const details = element2("details", { className: "ntl-menu", ...options }, element2("summary", {}, name2));
+    function menu(name2, entries, variant = "") {
+      const label2 = element2("span", { className: "ntl-menu-label" }, name2);
+      const summary = element2("summary", { title: name2, "aria-label": name2 }, label2);
+      const details = element2("details", { className: `ntl-menu ${variant}`, "data-ntl-menu": "" }, summary);
       details.append(element2("div", { className: "ntl-menu-items" }, ...entries.map(([text3, action]) => button2(text3, run(() => {
         details.open = false;
+        summary.focus({ preventScroll: true });
         return action();
       })))));
       return details;
@@ -69320,16 +69424,26 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       if (!library.data) return;
       if (query) {
         const matching = searchPages(library.data, query);
-        container.append(...matching.map(({ page, section, notebook }) => button2(page.title, () => select(page), { title: `${notebook.title} / ${section.title}`, className: "ntl-tree" })));
+        container.append(...matching.map(({ page, section, notebook }) => button2(
+          element2(
+            "span",
+            { className: "ntl-result" },
+            element2("span", { className: "ntl-row-title", dir: "auto" }, page.title),
+            element2("span", { className: "ntl-result-path", dir: "auto" }, `${notebook.title} / ${section.title}`)
+          ),
+          () => select(page),
+          { title: page.title, className: "ntl-tree", "data-ntl-nav-key": `page:${page.id}`, "aria-current": page.id === pageId ? "page" : null }
+        )));
         if (!matching.length) container.append(element2("p", { className: "ntl-muted" }, t("\u6CA1\u6709\u5339\u914D\u9875\u9762\u3002")));
         return;
       }
-      const pages = active(library.data.pages).filter((page) => page.sectionId === sectionId);
+      const pages = Map.groupBy(active(library.data.pages).filter((page) => page.sectionId === sectionId), (page) => page.parentId ?? null);
       function add(parentId, depth = 0) {
         if (depth > 10) return;
-        for (const page of pages.filter((item) => (item.parentId ?? null) === parentId)) {
-          const row = button2(page.title, () => select(page), { className: "ntl-tree", "aria-current": page.id === pageId ? "page" : null, draggable: "true", title: page.title });
-          row.style.paddingInlineStart = `${9 + Math.min(depth, 5) * 12}px`;
+        for (const page of pages.get(parentId) ?? []) {
+          const title = element2("span", { className: "ntl-row-title", dir: "auto" }, page.title);
+          const row = button2(title, () => select(page), { className: "ntl-tree ntl-page-row", "data-ntl-nav-key": `page:${page.id}`, "aria-current": page.id === pageId ? "page" : null, draggable: "true", title: page.title });
+          row.style.setProperty("--ntl-indent", `${Math.min(depth, 5) * 12}px`);
           row.addEventListener("dragstart", (event) => {
             dragId = page.id;
             event.dataTransfer.setData("text/plain", page.id);
@@ -69359,16 +69473,15 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         navigation.replaceChildren();
         return;
       }
+      const scrollTop = navigation.querySelector(".ntl-nav-scroll")?.scrollTop ?? 0;
+      const focused = document.activeElement;
+      const focusKey = navigation.contains(focused) ? focused.dataset.ntlNavKey : null;
       const books = active(data.notebooks);
       const book = books.find((entry) => entry.id === notebookId);
-      const search = element2("input", { type: "search", value: query, placeholder: t("\u641C\u7D22\u6240\u6709\u7B14\u8BB0"), "aria-label": t("\u641C\u7D22\u6240\u6709\u7B14\u8BB0") });
+      const search = element2("input", { type: "search", value: query, placeholder: t("\u641C\u7D22\u6240\u6709\u7B14\u8BB0"), "aria-label": t("\u641C\u7D22\u6240\u6709\u7B14\u8BB0"), "data-ntl-nav-key": "search" });
       const pages = element2("div", { className: "ntl-pages" });
-      search.addEventListener("input", () => {
-        query = search.value.trim();
-        pages.replaceChildren();
-        renderPageList(pages);
-      });
-      const bookPicker = element2("select", { "aria-label": t("\u7B14\u8BB0\u672C") }, ...books.map((item) => element2("option", { value: item.id }, item.title)));
+      const pagesLabel = element2("div", { className: "ntl-nav-label" });
+      const bookPicker = element2("select", { "aria-label": t("\u7B14\u8BB0\u672C"), "data-ntl-nav-key": "books" }, ...books.map((item) => element2("option", { value: item.id }, item.title)));
       bookPicker.value = book?.id ?? "";
       bookPicker.addEventListener("change", () => {
         notebookId = bookPicker.value;
@@ -69382,14 +69495,15 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       function addSections(parent = null, depth = 0) {
         if (depth > 8) return;
         for (const section of sections.filter((item) => (item.parentId ?? null) === parent)) {
-          const row = element2("div", { className: "ntl-section-row" }, button2(section.title, () => {
+          const title = element2("span", { className: "ntl-row-title", dir: "auto" }, section.title);
+          const row = button2(title, () => {
             sectionId = section.id;
             pageId = void 0;
             reconcileSelection();
             renderNavigation();
             renderPage(true);
-          }, { className: "ntl-tree", "aria-current": section.id === sectionId ? "true" : null, title: section.title }));
-          row.style.paddingInlineStart = `${Math.min(depth, 5) * 10}px`;
+          }, { className: "ntl-tree ntl-section-row", "data-ntl-nav-key": `section:${section.id}`, "data-kind": section.kind, "aria-current": section.id === sectionId ? "true" : null, title: section.title });
+          row.style.setProperty("--ntl-indent", `${Math.min(depth, 5) * 10}px`);
           sectionControls.push(row);
           addSections(section.id, depth + 1);
         }
@@ -69399,20 +69513,43 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       const bookMenu = [[t("\u65B0\u5EFA\u7B14\u8BB0\u672C"), addNotebook], [t("\u65B0\u5EFA\u5206\u533A"), () => addSection("section", currentSection?.kind === "group" ? currentSection.id : null)], [t("\u65B0\u5EFA\u5206\u533A\u7EC4"), () => addSection("group", currentSection?.kind === "group" ? currentSection.id : null)]];
       if (book) bookMenu.push([t("\u91CD\u547D\u540D\u7B14\u8BB0\u672C"), () => rename("notebooks", book)], [t("\u56DE\u6536\u7B14\u8BB0\u672C"), () => trash("notebooks", book)]);
       if (currentSection) bookMenu.push([t("\u91CD\u547D\u540D\u5206\u533A"), () => rename("sections", currentSection)], [t("\u56DE\u6536\u5206\u533A"), () => trash("sections", currentSection)]);
-      navigation.replaceChildren(
-        element2("div", { className: "ntl-bookpick" }, bookPicker, menu(t("\u7BA1\u7406"), bookMenu)),
-        search,
-        element2("div", { className: "ntl-sections" }, ...sectionControls),
-        element2("div", { className: "ntl-pages-label" }, t("\u9875\u9762"), button2("\uFF0B", run(() => addPage()), { "aria-label": t("\u65B0\u5EFA\u9875\u9762") })),
-        pages
+      const sectionList = element2(
+        "div",
+        { className: "ntl-sections-wrap" },
+        element2("div", { className: "ntl-nav-label" }, t("\u5206\u533A")),
+        element2("div", { className: "ntl-sections" }, ...sectionControls)
       );
-      renderPageList(pages);
+      const navScroll = element2("div", { className: "ntl-nav-scroll" }, sectionList, pagesLabel, pages);
+      const updateResults = () => {
+        sectionList.hidden = Boolean(query) || !sections.length;
+        pagesLabel.textContent = query ? t("\u641C\u7D22\u7ED3\u679C") : t("\u9875\u9762");
+        pages.replaceChildren();
+        renderPageList(pages);
+      };
+      search.addEventListener("input", () => {
+        query = search.value.trim();
+        navScroll.scrollTop = 0;
+        updateResults();
+      });
+      navigation.replaceChildren(element2(
+        "div",
+        { className: "ntl-nav-head" },
+        element2("div", { className: "ntl-bookpick" }, bookPicker, menu(t("\u7BA1\u7406"), bookMenu, "ntl-menu-icon")),
+        element2("div", { className: "ntl-search" }, search)
+      ), navScroll);
+      updateResults();
+      navScroll.scrollTop = scrollTop;
+      if (focusKey) navigation.querySelector(`[data-ntl-nav-key="${view.CSS.escape(focusKey)}"]`)?.focus({ preventScroll: true });
     }
     async function requestPlacement() {
       const list2 = getPending();
       if (!list2.length) return;
       placement.hidden = false;
-      placement.replaceChildren(element2("span", {}, t("\u70B9\u51FB\u7EB8\u9762\u653E\u7F6E {0} \u9879", list2.length)), button2(t("\u8FFD\u52A0\u5230\u9875\u9762"), run(() => dropMaterials())), button2(t("\u53D6\u6D88"), () => setPending([])));
+      placement.replaceChildren(
+        element2("span", { className: "ntl-placement-hint" }, t("\u70B9\u51FB\u7EB8\u9762\u653E\u7F6E {0} \u9879", list2.length)),
+        button2(t("\u8FFD\u52A0\u5230\u9875\u9762"), run(() => dropMaterials()), { className: "ntl-primary" }),
+        button2(t("\u53D6\u6D88"), () => setPending([]))
+      );
     }
     async function dropMaterials(point) {
       const materials = getPending();
@@ -69586,9 +69723,9 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         paperRoot.replaceChildren(element2(
           "div",
           { className: "ntl-empty" },
-          element2("h2", {}, t("\u5B66\u4E60\u7B14\u8BB0")),
-          element2("p", {}, getPending().length ? t("\u65B0\u5EFA\u9875\u9762\u540E\u5373\u53EF\u653E\u7F6E\u6458\u5F55\u3002") : t("\u521B\u5EFA\u9875\u9762\uFF0C\u6216\u4ECE\u7F51\u9875\u548C PDF \u6458\u5F55\u5185\u5BB9\u3002")),
-          button2(t("\u65B0\u5EFA\u9875\u9762"), run(() => addPage()), { className: "ntl-primary" })
+          element2("span", { className: "ntl-empty-sheet", "aria-hidden": "true" }),
+          element2("h2", {}, t("\u8FD9\u91CC\u8FD8\u6CA1\u6709\u9875\u9762")),
+          element2("p", {}, getPending().length ? t("\u65B0\u5EFA\u9875\u9762\u540E\u5373\u53EF\u653E\u7F6E\u6458\u5F55\u3002") : t("\u521B\u5EFA\u9875\u9762\uFF0C\u6216\u4ECE\u7F51\u9875\u548C PDF \u6458\u5F55\u5185\u5BB9\u3002"))
         ));
         placement.hidden = true;
         return;
@@ -69639,11 +69776,23 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         });
         if (selection && alive) preview([{ kind: "text", text: selection, source: page.background.source }], "context");
       }]);
-      titlebar.replaceChildren(element2("h2", { title: page.title }, page.title), ...(page.tags ?? []).map((tag) => element2("span", { className: "ntl-tag" }, tag)), menu(t("\u9875\u9762\u64CD\u4F5C"), actions));
+      const section = library.data.sections.find((item) => item.id === page.sectionId);
+      const tags = (page.tags ?? []).map((tag) => element2("span", { className: "ntl-tag", title: tag, dir: "auto" }, tag));
+      titlebar.replaceChildren(
+        element2(
+          "div",
+          { className: "ntl-page-heading" },
+          section && element2("div", { className: "ntl-page-section", title: section.title, dir: "auto" }, section.title),
+          element2("h2", { title: page.title, dir: "auto", tabindex: "-1" }, page.title),
+          tags.length ? element2("div", { className: "ntl-page-tags" }, ...tags) : null
+        ),
+        menu(t("\u9875\u9762\u64CD\u4F5C"), actions, "ntl-page-menu")
+      );
       if (mountedPage !== page.id) {
         paper?.destroy();
         paper = mountPaper(paperRoot, {
           page,
+          controlsRoot: paperControls,
           onChange(next) {
             try {
               savePage(next);
@@ -69674,7 +69823,9 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     function renderStatus(update = {}) {
       const error3 = update.error ?? library.error;
       languagePicker.disabled = importing || applying || Boolean(update.locked);
-      const items = [busy || (update.locked ? t("\u6B63\u5728\u6062\u590D\u2026") : update.pending ? t("\u5F85\u4FDD\u5B58") : library.data ? t("\u672C\u5730\u4FDD\u5B58") : t("\u6B63\u5728\u8F7D\u5165\u2026"))];
+      const text3 = busy || (update.locked ? t("\u6B63\u5728\u6062\u590D\u2026") : update.pending ? t("\u5F85\u4FDD\u5B58") : library.data ? t("\u672C\u5730\u4FDD\u5B58") : t("\u6B63\u5728\u8F7D\u5165\u2026"));
+      status.dataset.state = error3 ? "error" : busy || update.locked || !library.data ? "busy" : update.pending ? "pending" : "saved";
+      const items = [element2("span", { className: "ntl-status-label" }, text3)];
       if (error3) items.push(element2("span", { className: "ntl-error" }, error3.message));
       if (error3?.status === 409) items.push(button2(t("\u4E0B\u8F7D\u672C\u7A97\u53E3\u526F\u672C"), run(exportBackup)), button2(t("\u91CD\u8F7D"), run(async () => {
         if (await confirmDialog(t("\u91CD\u65B0\u8F7D\u5165"), t("\u91CD\u8F7D\u4F1A\u7528\u78C1\u76D8\u4E0A\u7684\u7248\u672C\u66FF\u6362\u672C\u7A97\u53E3\u5C1A\u672A\u4FDD\u5B58\u7684\u7F16\u8F91\u3002"), t("\u91CD\u8F7D"))) await library.load(true);
@@ -69703,25 +69854,33 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     };
     const refreshTimer = setInterval(refresh, 4e3);
     document.defaultView.addEventListener("focus", refresh);
+    const newPage = button2(
+      element2("span", { className: "ntl-new-label" }, element2("span", { "aria-hidden": "true" }, "+"), t("\u65B0\u5EFA\u9875\u9762")),
+      run(() => addPage()),
+      { className: "ntl-primary", "aria-label": t("\u65B0\u5EFA\u9875\u9762") }
+    );
     toolbar.append(
-      navigationToggle,
-      element2("strong", {}, t("\u5B66\u4E60\u7B14\u8BB0")),
-      languagePicker,
-      button2(t("\u65B0\u5EFA\u9875\u9762"), run(() => addPage()), { className: "ntl-primary" }),
-      menu(t("\u8D44\u6599\u4E0E\u5907\u4EFD"), [
-        [t("\u5728\u4FA7\u680F\u6253\u5F00\u7F51\u9875"), async () => {
-          const url = await inputDialog(t("\u6253\u5F00\u7F51\u9875"), t("\u7F51\u9875\u5730\u5740"));
-          if (url) openWeb(url);
-        }],
-        [t("\u5BFC\u5165 PDF \u6216 Markdown"), async () => {
-          const [file] = await pickFile(".pdf,.md,.markdown,application/pdf,text/markdown");
-          await importContent(file);
-        }],
-        [t("\u6253\u5F00\u5728\u7EBF PDF"), importUrl],
-        [t("\u5BFC\u51FA\u53EF\u7F16\u8F91\u5907\u4EFD"), exportBackup],
-        [t("\u6062\u590D\u5907\u4EFD"), restoreBackup],
-        [t("\u56DE\u6536\u7AD9"), recycleBin]
-      ])
+      element2("div", { className: "ntl-workspace-identity" }, navigationToggle, element2("strong", {}, t("\u5B66\u4E60\u7B14\u8BB0"))),
+      element2(
+        "div",
+        { className: "ntl-workspace-actions" },
+        languagePicker,
+        menu(t("\u8D44\u6599\u4E0E\u5907\u4EFD"), [
+          [t("\u5728\u4FA7\u680F\u6253\u5F00\u7F51\u9875"), async () => {
+            const url = await inputDialog(t("\u6253\u5F00\u7F51\u9875"), t("\u7F51\u9875\u5730\u5740"));
+            if (url) openWeb(url);
+          }],
+          [t("\u5BFC\u5165 PDF \u6216 Markdown"), async () => {
+            const [file] = await pickFile(".pdf,.md,.markdown,application/pdf,text/markdown");
+            await importContent(file);
+          }],
+          [t("\u6253\u5F00\u5728\u7EBF PDF"), importUrl],
+          [t("\u5BFC\u51FA\u53EF\u7F16\u8F91\u5907\u4EFD"), exportBackup],
+          [t("\u6062\u590D\u5907\u4EFD"), restoreBackup],
+          [t("\u56DE\u6536\u7AD9"), recycleBin]
+        ], "ntl-resource-menu"),
+        newPage
+      )
     );
     library.load().then(() => {
       if (!alive) return;
@@ -69734,6 +69893,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     });
     return () => {
       alive = false;
+      layoutObserver.disconnect();
+      lifetime.abort();
       clearInterval(refreshTimer);
       document.defaultView.removeEventListener("focus", refresh);
       unsubscribe();
@@ -69764,10 +69925,10 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
   }
 
   // lib/paper.css
-  var paper_default = '.nl-paper {\n  --nl-paper-ink: #26394f;\n  --nl-paper-page: #fffef9;\n  --nl-paper-faint: #e0e7ef;\n  --nl-paper-blue: #245fa2;\n  --nl-paper-mat: #edf1f5;\n  display: flex;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 280px;\n  height: 100%;\n  background: var(--nl-paper-mat);\n  color: var(--nl-paper-ink);\n  font: 13px/1.45 system-ui, "Microsoft YaHei", sans-serif;\n}\n.nl-paper *, .nl-paper *::before, .nl-paper *::after { box-sizing: border-box; }\n.nl-paper [hidden] { display: none; }\n.nl-paper-toolbar, .nl-paper-format, .nl-paper-link-form {\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  flex-wrap: wrap;\n  padding: 7px 9px;\n  background: #f8fafc;\n  border-bottom: 1px solid var(--nl-paper-faint);\n}\n.nl-paper-format { padding-block: 4px; }\n.nl-paper-actions, .nl-paper-zoom {\n  display: inline-flex;\n  gap: 4px;\n  align-items: center;\n  flex-wrap: wrap;\n  margin-left: 3px;\n}\n.nl-paper-button {\n  padding: 4px 7px;\n  min-height: 28px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: inherit;\n  font: inherit;\n  cursor: pointer;\n  white-space: nowrap;\n}\n.nl-paper-button:hover { background: #edf3fb; border-color: #dce5ef; }\n.nl-paper-button[aria-pressed="true"] {\n  color: var(--nl-paper-blue);\n  background: #e7f1fe;\n  border-color: #b6d0ee;\n}\n.nl-paper-button:disabled { opacity: 0.45; cursor: default; }\n.nl-paper-button:disabled:hover { background: transparent; border-color: transparent; }\n.nl-paper-button:focus-visible, .nl-paper input:focus-visible, .nl-paper-move:focus-visible, .nl-paper-resize:focus-visible {\n  outline: 2px solid var(--nl-paper-blue);\n  outline-offset: 1px;\n}\n.nl-paper-color {\n  width: 27px;\n  height: 27px;\n  padding: 2px;\n  border: 1px solid var(--nl-paper-faint);\n  border-radius: 6px;\n  background: white;\n}\n.nl-paper-size { width: 48px; accent-color: var(--nl-paper-blue); }\n.nl-paper-link-form input {\n  color: inherit;\n  background: white;\n  border: 1px solid var(--nl-paper-faint);\n  border-radius: 5px;\n  padding: 5px 7px;\n  font: inherit;\n}\n.nl-paper-viewport {\n  min-height: 225px;\n  overflow: auto;\n  padding: 24px;\n  flex: 1 1 auto;\n  overscroll-behavior: contain;\n}\n.nl-paper-sheet-frame {\n  position: relative;\n  margin-inline: auto;\n  box-shadow: 0 0 0 1px #e4e8ee, 0 3px 14px #32445f16;\n  overflow: hidden;\n}\n.nl-paper-sheet {\n  position: relative;\n  isolation: isolate;\n  transform-origin: top left;\n  background: var(--nl-paper-page);\n  overflow: hidden;\n}\n.nl-paper-sheet[data-tool="text"] { cursor: text; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) {\n  cursor: crosshair;\n  touch-action: none;\n  user-select: none;\n}\n.nl-paper-background, .nl-paper-ink, .nl-paper-objects, .nl-paper-selection {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n}\n.nl-paper-background {\n  object-fit: fill;\n  pointer-events: none;\n  user-select: none;\n}\n.nl-paper-ink, .nl-paper-selection { pointer-events: none; }\n.nl-paper-objects { z-index: 1; }\n.nl-paper-ink { z-index: 2; }\n.nl-paper-selection { z-index: 3; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-objects { pointer-events: none; }\n.nl-paper-block {\n  position: absolute;\n  border: 1px solid transparent;\n  min-width: 0;\n  color: var(--nl-paper-ink);\n}\n.nl-paper-block:is(:hover, :focus-within, .is-selected) { border-color: #94b3d9; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-block { border-color: transparent; }\n.nl-paper-edit {\n  outline: none;\n  min-height: 38px;\n  padding: 6px 8px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  font: 18px/1.5 system-ui, "Microsoft YaHei", sans-serif;\n}\n.nl-paper-edit h2, .nl-paper-edit h3 { margin-block: 0.25em; font-weight: 700; line-height: 1.25; }\n.nl-paper-edit h2 { font-size: 1.35em; }\n.nl-paper-edit h3 { font-size: 1.15em; }\n.nl-paper-edit p { margin-block: 0.2em; }\n.nl-paper-edit ol, .nl-paper-edit ul { margin-block: 0.2em; padding-left: 1.45em; }\n.nl-paper-edit ol { list-style: decimal outside; }\n.nl-paper-edit ul { list-style: disc outside; }\n.nl-paper-edit a, .nl-paper-reference:is(a, button) { color: var(--nl-paper-blue); text-decoration: underline; }\n.nl-paper-edit table { border-collapse: collapse; max-width: 100%; }\n.nl-paper-edit th, .nl-paper-edit td {\n  min-width: 60px;\n  padding: 3px 7px;\n  border: 1px solid #a2b4c7;\n}\n.nl-paper-edit th { font-weight: 700; }\n.nl-paper-edit input[type="checkbox"] { accent-color: var(--nl-paper-blue); cursor: pointer; }\n.nl-paper-markdown-toggle {\n  display: block;\n  margin: 2px 4px 0 auto;\n  padding: 2px 6px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: var(--nl-paper-blue);\n  font: inherit;\n  cursor: pointer;\n}\n.nl-paper-markdown-toggle:focus-visible, .nl-paper-markdown-toggle:hover { background: #e7f1fe; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-markdown-toggle {\n  visibility: hidden;\n}\n.nl-paper-markdown-source {\n  width: 100%;\n  min-height: 122px;\n  display: block;\n  resize: vertical;\n  padding: 6px 8px;\n  color: var(--nl-paper-ink);\n  background: #f4f8fd;\n  border: 0;\n  outline: 0;\n  font: 16px/1.5 Consolas, monospace;\n}\n.nl-paper-markdown-preview { white-space: normal; }\n.nl-paper-markdown-preview math[display="block"] {\n  margin-block: .45em;\n  overflow-x: auto;\n  max-width: 100%;\n}\n.nl-paper-markdown-preview pre {\n  padding: 5px 7px;\n  background: #eef3f8;\n  white-space: pre-wrap;\n}\n.nl-paper-move, .nl-paper-resize {\n  position: absolute;\n  display: none;\n  color: var(--nl-paper-blue);\n  background: #eff6ff;\n  border: 1px solid #94b3d9;\n  z-index: 4;\n  padding: 0;\n  touch-action: none;\n}\n.nl-paper-move {\n  left: -1px;\n  top: -22px;\n  height: 22px;\n  min-width: 26px;\n  border-radius: 4px 4px 0 0;\n  cursor: grab;\n}\n.nl-paper-resize {\n  right: -3px;\n  bottom: -3px;\n  width: 13px;\n  height: 13px;\n  border-radius: 3px;\n  cursor: nwse-resize;\n}\n.nl-paper-sheet[data-tool="select"] .nl-paper-block:is(.is-selected, :hover, :focus-within) :is(.nl-paper-move, .nl-paper-resize) {\n  display: block;\n}\n.nl-paper-object-image { display: block; width: 100%; object-fit: fill; user-select: none; }\n.nl-paper-file {\n  appearance: none;\n  display: block;\n  max-width: 100%;\n  margin: 4px;\n  padding: 5px 9px;\n  border: 1px solid var(--nl-paper-faint);\n  border-radius: 6px;\n  color: var(--nl-paper-blue);\n  background: #f4f7ff;\n  font: 15px/1.4 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n  cursor: pointer;\n}\n.nl-paper-reference {\n  display: block;\n  width: fit-content;\n  max-width: 100%;\n  margin: 1px 8px 4px;\n  color: #526b84;\n  font: 13px/1.35 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n}\n.nl-paper-reference:is(button) {\n  padding: 0;\n  border: 0;\n  background: transparent;\n  text-align: start;\n  cursor: pointer;\n}\n.nl-paper-live:not(:empty) {\n  margin: 0;\n  padding: 5px 9px;\n  color: #45617f;\n  background: #f8fafc;\n  border-top: 1px solid var(--nl-paper-faint);\n}\n.nl-paper-live:empty { display: none; }\n';
+  var paper_default = '.nl-paper {\n  --nl-paper-ink: #26394f;\n  --nl-paper-page: #fffef9;\n  --nl-paper-faint: #e0e7ef;\n  --nl-paper-blue: #245fa2;\n  --nl-paper-mat: var(--ntl-mat, #edf1f5);\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  background: var(--nl-paper-mat);\n  color: var(--ntl-ink, var(--nl-paper-ink));\n  font: 13px/1.45 var(--ntl-font, system-ui, "Microsoft YaHei", sans-serif);\n}\n\n.nl-paper *, .nl-paper *::before, .nl-paper *::after { box-sizing: border-box; }\n.nl-paper [hidden] { display: none; }\n\n.nl-paper-toolbar, .nl-paper-format, .nl-paper-pen, .nl-paper-link-form {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 3px 7px;\n  padding: 5px 9px;\n  background: var(--ntl-surface, #fff);\n  border-bottom: 1px solid var(--ntl-line, var(--nl-paper-faint));\n}\n\n.nl-paper-toolbar { position: relative; z-index: 5; justify-content: space-between; }\n.nl-paper-format, .nl-paper-pen, .nl-paper-link-form { background: var(--ntl-rail, #f8fafc); }\n\n.nl-paper-tools, .nl-paper-actions, .nl-paper-zoom {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 2px;\n  min-width: 0;\n}\n\n.nl-paper-toolbar .nl-paper-shapes > summary,\n.nl-paper-button {\n  min-width: 27px;\n  min-height: 28px;\n  padding: 3px 5px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: inherit;\n  cursor: pointer;\n  font: inherit;\n  font-size: 12px;\n  white-space: nowrap;\n}\n\n.nl-paper-button:hover {\n  background: var(--ntl-hover, #edf3fb);\n}\n\n.nl-paper-shapes[open] > summary,\n.nl-paper-shapes > summary[data-active="true"],\n.nl-paper-button:is([aria-pressed="true"], [aria-expanded="true"]) {\n  background: var(--ntl-tint, #e7f1fe);\n  color: var(--ntl-ink, var(--nl-paper-blue));\n  font-weight: 600;\n}\n\n.nl-paper-shapes > summary::after { width: 5px; height: 5px; }\n.nl-paper-shapes .ntl-menu-items { min-width: 94px; }\n\n.nl-paper-history { font-size: 16px; line-height: 1; }\n\n.nl-paper-delete {\n  position: relative;\n  display: inline-grid;\n  place-items: center;\n}\n\n.nl-paper-delete::before {\n  width: 9px;\n  height: 10px;\n  margin-top: 3px;\n  border: 1px solid currentColor;\n  border-radius: 0 0 2px 2px;\n  content: "";\n}\n\n.nl-paper-delete::after {\n  position: absolute;\n  inset-block-start: 7px;\n  width: 12px;\n  height: 1px;\n  background: currentColor;\n  content: "";\n}\n\n.nl-paper-ask:not(:disabled) {\n  padding-inline: 7px;\n  background: var(--ntl-fill, #245fa2);\n  color: var(--ntl-on-accent, #fff);\n  font-weight: 600;\n}\n\n.nl-paper-ask:not(:disabled):hover { background: var(--ntl-fill-hover, #184d92); }\n\n.nl-paper-button:disabled { opacity: .46; cursor: default; }\n.nl-paper-button:disabled:hover { background: transparent; }\n\n.nl-paper-button:focus-visible, .nl-paper :is(input, summary, .nl-paper-move, .nl-paper-resize):focus-visible {\n  outline: 2px solid var(--ntl-accent, var(--nl-paper-blue));\n  outline-offset: 1px;\n}\n\n.nl-paper-color {\n  width: 24px;\n  height: 24px;\n  padding: 2px;\n  border: 1px solid var(--ntl-line, var(--nl-paper-faint));\n  border-radius: 5px;\n  background: var(--ntl-surface, #fff);\n}\n\n.nl-paper-size { width: 50px; accent-color: var(--ntl-accent, var(--nl-paper-blue)); }\n\n.nl-paper-link-form input {\n  min-width: 0;\n  color: inherit;\n  background: var(--ntl-surface, #fff);\n  border: 1px solid var(--ntl-line, var(--nl-paper-faint));\n  border-radius: 5px;\n  padding: 5px 7px;\n  font: inherit;\n}\n\n.nl-paper-viewport {\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow: auto;\n  overscroll-behavior: contain;\n  padding: 18px;\n}\n\n.nl-paper-sheet-frame {\n  position: relative;\n  margin-inline: auto;\n  overflow: hidden;\n  box-shadow: 0 0 0 1px #5a6a8126, 0 3px 10px #23344e14;\n}\n\n@container (max-width: 450px) {\n  .nl-paper-toolbar { padding-inline: 5px; gap: 2px 6px; }\n  .nl-paper-viewport { padding: 11px; }\n}\n.nl-paper-sheet {\n  position: relative;\n  isolation: isolate;\n  transform-origin: top left;\n  background: var(--nl-paper-page);\n  color: var(--nl-paper-ink);\n  overflow: hidden;\n}\n.nl-paper-sheet[data-tool="text"] { cursor: text; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) {\n  cursor: crosshair;\n  touch-action: none;\n  user-select: none;\n}\n.nl-paper-background, .nl-paper-ink, .nl-paper-objects, .nl-paper-selection {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n}\n.nl-paper-background {\n  object-fit: fill;\n  pointer-events: none;\n  user-select: none;\n}\n.nl-paper-ink, .nl-paper-selection { pointer-events: none; }\n.nl-paper-objects { z-index: 1; }\n.nl-paper-ink { z-index: 2; }\n.nl-paper-selection { z-index: 3; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-objects { pointer-events: none; }\n.nl-paper-block {\n  position: absolute;\n  border: 1px solid transparent;\n  min-width: 0;\n  color: var(--nl-paper-ink);\n}\n.nl-paper-block:is(:hover, :focus-within, .is-selected) { border-color: #94b3d9; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-block { border-color: transparent; }\n.nl-paper-edit {\n  outline: none;\n  min-height: 38px;\n  padding: 6px 8px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  font: 18px/1.5 system-ui, "Microsoft YaHei", sans-serif;\n}\n.nl-paper-edit h2, .nl-paper-edit h3 { margin-block: 0.25em; font-weight: 700; line-height: 1.25; }\n.nl-paper-edit h2 { font-size: 1.35em; }\n.nl-paper-edit h3 { font-size: 1.15em; }\n.nl-paper-edit p { margin-block: 0.2em; }\n.nl-paper-edit ol, .nl-paper-edit ul { margin-block: 0.2em; padding-left: 1.45em; }\n.nl-paper-edit ol { list-style: decimal outside; }\n.nl-paper-edit ul { list-style: disc outside; }\n.nl-paper-edit a, .nl-paper-reference:is(a, button) { color: var(--nl-paper-blue); text-decoration: underline; }\n.nl-paper-edit table { border-collapse: collapse; max-width: 100%; }\n.nl-paper-edit th, .nl-paper-edit td {\n  min-width: 60px;\n  padding: 3px 7px;\n  border: 1px solid #a2b4c7;\n}\n.nl-paper-edit th { font-weight: 700; }\n.nl-paper-edit input[type="checkbox"] { accent-color: var(--nl-paper-blue); cursor: pointer; }\n.nl-paper-markdown-toggle {\n  display: block;\n  margin: 2px 4px 0 auto;\n  padding: 2px 6px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: var(--nl-paper-blue);\n  font: inherit;\n  cursor: pointer;\n}\n.nl-paper-markdown-toggle:focus-visible, .nl-paper-markdown-toggle:hover { background: #e7f1fe; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-markdown-toggle {\n  visibility: hidden;\n}\n.nl-paper-markdown-source {\n  width: 100%;\n  min-height: 122px;\n  display: block;\n  resize: vertical;\n  padding: 6px 8px;\n  color: var(--nl-paper-ink);\n  background: #f4f8fd;\n  border: 0;\n  outline: 0;\n  font: 16px/1.5 Consolas, monospace;\n}\n.nl-paper-markdown-preview { white-space: normal; }\n.nl-paper-markdown-preview math[display="block"] {\n  margin-block: .45em;\n  overflow-x: auto;\n  max-width: 100%;\n}\n.nl-paper-markdown-preview pre {\n  padding: 5px 7px;\n  background: #eef3f8;\n  white-space: pre-wrap;\n}\n.nl-paper-move, .nl-paper-resize {\n  position: absolute;\n  display: none;\n  color: var(--nl-paper-blue);\n  background: #eff6ff;\n  border: 1px solid #94b3d9;\n  z-index: 4;\n  padding: 0;\n  touch-action: none;\n}\n.nl-paper-move {\n  left: -1px;\n  top: -22px;\n  height: 22px;\n  min-width: 26px;\n  border-radius: 4px 4px 0 0;\n  cursor: grab;\n}\n.nl-paper-resize {\n  right: -3px;\n  bottom: -3px;\n  width: 13px;\n  height: 13px;\n  border-radius: 3px;\n  cursor: nwse-resize;\n}\n.nl-paper-sheet[data-tool="select"] .nl-paper-block:is(.is-selected, :hover, :focus-within) :is(.nl-paper-move, .nl-paper-resize) {\n  display: block;\n}\n.nl-paper-object-image { display: block; width: 100%; object-fit: fill; user-select: none; }\n.nl-paper-file {\n  appearance: none;\n  display: block;\n  max-width: 100%;\n  margin: 4px;\n  padding: 5px 9px;\n  border: 1px solid var(--nl-paper-faint);\n  border-radius: 6px;\n  color: var(--nl-paper-blue);\n  background: #f4f7ff;\n  font: 15px/1.4 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n  cursor: pointer;\n}\n.nl-paper-reference {\n  display: block;\n  width: fit-content;\n  max-width: 100%;\n  margin: 1px 8px 4px;\n  color: #526b84;\n  font: 13px/1.35 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n}\n.nl-paper-reference:is(button) {\n  padding: 0;\n  border: 0;\n  background: transparent;\n  text-align: start;\n  cursor: pointer;\n}\n.nl-paper-live:not(:empty) {\n  margin: 0;\n  padding: 5px 9px;\n  color: var(--ntl-muted, #45617f);\n  background: var(--ntl-rail, #f8fafc);\n  border-top: 1px solid var(--ntl-line, var(--nl-paper-faint));\n}\n.nl-paper-live:empty { display: none; }\n';
 
   // lib/client.css
-  var client_default = '.ntl-host,.ntl-notebook{width:100%;height:100%;min-height:0;box-sizing:border-box;color:inherit}\n.ntl-notebook{--ntl-panel:#f9f7f1;--ntl-ink:#293441;--ntl-line:#e0dbd0;--ntl-accent:#244d9a;--ntl-tint:#e9eff8;display:flex;flex-direction:column;container-type:inline-size;color:var(--ntl-ink);background:var(--ntl-panel);font:14px/1.45 "Segoe UI",system-ui,sans-serif}\n.ntl-workspace-bar,.ntl-pagebar,.ntl-bookpick,.ntl-placement{display:flex;gap:8px;align-items:center}\n.ntl-workspace-bar{position:relative;z-index:14;padding:10px 12px;border-bottom:1px solid var(--ntl-line);flex-wrap:wrap}\n.ntl-workspace-bar strong{margin-inline-end:auto;line-height:28px;font-size:15px;letter-spacing:.02em}\n.ntl-language{color:inherit;background:var(--ntl-panel);border:1px solid var(--ntl-line);border-radius:6px;padding:4px 6px;font:inherit}\n.ntl-workspace-grid{display:grid;grid-template-columns:minmax(124px,190px) minmax(0,1fr);flex:1;min-height:0}\n.ntl-library{min-width:0;min-height:0;display:flex;flex-direction:column;gap:8px;padding:10px;border-right:1px solid var(--ntl-line);overflow:auto;background:#f7f3e9}\n.ntl-bookpick{align-items:stretch}\n.ntl-bookpick select{min-width:0;flex:1}\n.ntl-sections,.ntl-pages{display:grid;gap:2px}\n.ntl-pages-label{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--ntl-line);padding-top:9px;font-weight:600}\n.ntl-notebook input,.ntl-notebook select,.ntl-dialog input,.ntl-dialog textarea,.ntl-dialog select{box-sizing:border-box;padding:7px 9px;min-width:0;max-width:100%;border:1px solid var(--ntl-line,#d8dbe0);border-radius:6px;background:#fff;color:#293441;font:inherit}\n.ntl-notebook input:focus-visible,.ntl-notebook select:focus-visible,.ntl-dialog :is(input,select,textarea):focus-visible,.ntl-notebook :is(button,summary):focus-visible,.ntl-dialog button:focus-visible{outline:2px solid #4874c4;outline-offset:2px}\n.ntl-notebook button:not([class^="nl-paper"]):not([class^="ntl-tree"]),.ntl-dialog button,.ntl-menu summary,.ntl-launch{box-sizing:border-box;cursor:pointer;color:inherit;padding:5px 9px;border:1px solid var(--ntl-line,#d8dbe0);border-radius:6px;background:#fff;font:inherit;white-space:nowrap}\n.ntl-notebook button:not([class^="nl-paper"]):hover,.ntl-dialog button:hover,.ntl-menu summary:hover{background:#eaf0f9}\n.ntl-notebook button.ntl-primary,.ntl-dialog button.ntl-primary{color:white;background:#244d9a;border-color:#244d9a}\n.ntl-notebook button.ntl-primary:hover,.ntl-dialog button.ntl-primary:hover{background:#193a79}\n.ntl-dialog button:disabled{opacity:.48;cursor:default}\n.ntl-launch{border:0;background:transparent;color:inherit;margin-inline:6px;font-size:inherit}\n.ntl-tree{display:block;text-align:left;cursor:pointer;width:100%;max-width:100%;line-height:1.35;padding:7px 9px;background:transparent;border:0;border-radius:5px;color:inherit;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}\n.ntl-tree[aria-current]{background:var(--ntl-tint);color:var(--ntl-accent);font-weight:650}\n.ntl-document{min-width:0;min-height:0;display:flex;flex-direction:column;overflow:hidden}\n.ntl-pagebar{min-width:0;flex-wrap:wrap;padding:9px 10px;border-bottom:1px solid var(--ntl-line);position:relative;z-index:7}\n.ntl-pagebar:empty{display:none}\n.ntl-pagebar h2{margin:0;margin-inline-end:auto;font-size:15px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.ntl-tag{padding:2px 6px;border-radius:4px;background:var(--ntl-tint);color:var(--ntl-accent);font-size:12px}\n.ntl-paper-root{flex:1;min-height:0;min-width:0;overflow:auto;box-sizing:border-box}\n.ntl-placement{padding:6px 10px;background:var(--ntl-tint);flex-wrap:wrap}\n.ntl-placement[hidden]{display:none}\n.ntl-empty{text-align:center;padding:44px 14px;color:#536273}\n.ntl-empty h2{margin:0;color:var(--ntl-ink);font-weight:600}\n.ntl-status{display:flex;align-items:center;flex-wrap:wrap;gap:7px;min-height:24px;padding:2px 8px;border-top:1px solid var(--ntl-line);color:#586474;font-size:12px}\n.ntl-error,.ntl-toast-error{color:#941f2c}\n.ntl-muted{margin:6px;color:#687588}\n.ntl-menu{position:relative}\n.ntl-menu summary{display:list-item;list-style-position:inside;list-style-type:disclosure-closed}\n.ntl-menu[open] summary{list-style-type:disclosure-open}\n.ntl-menu-items{position:absolute;z-index:19;inset-inline-end:0;top:100%;min-width:148px;max-height:min(52vh,420px);overflow:auto;display:grid;padding:5px;border:1px solid var(--ntl-line);background:white;border-radius:8px;box-shadow:0 8px 22px #29344124}\n.ntl-menu-items button{border:0!important;text-align:start}\n.ntl-nav-toggle{display:none}\n.ntl-dialog{box-sizing:border-box;width:min(560px,calc(100vw - 28px));max-height:min(80vh,820px);overflow:auto;margin:auto;padding:18px;border:1px solid #d8dbe0;border-radius:12px;background:#fcfbf8;color:#263348;box-shadow:0 14px 42px #2030473d;font:14px/1.47 "Segoe UI",system-ui,sans-serif}\n.ntl-dialog::backdrop{background:#101d3560}\n.ntl-dialog h2{font-size:18px;margin:0 0 12px;color:inherit}\n.ntl-dialog-content{display:grid;gap:10px}\n.ntl-dialog-content label{display:grid;gap:5px}\n.ntl-dialog-content p{margin:3px 0}\n.ntl-dialog-actions{display:flex;justify-content:flex-end;gap:8px;padding-top:12px}\n.ntl-dialog-row{display:flex;justify-content:space-between;align-items:center;gap:10px;overflow-wrap:anywhere}\n.ntl-materials,.ntl-material{display:grid;gap:8px;min-width:0}\n.ntl-material{padding:8px;border:1px solid #dedfe3;border-radius:6px;background:#fff}\n.ntl-material img{width:auto;max-width:100%;max-height:35vh;object-fit:contain;object-position:left center}\n.ntl-material textarea{resize:vertical}\n.ntl-toast{position:fixed;z-index:2147483647;inset:auto 18px 18px auto;max-width:min(470px,calc(100vw - 40px));box-sizing:border-box;padding:10px 14px;border:1px solid #d8dbe0;border-radius:8px;background:#faf8f2;color:#293441;box-shadow:0 5px 18px #20304738;font:14px/1.4 "Segoe UI",system-ui,sans-serif}\n.ntl-toast-error{color:#941f2c}\n[data-composer-input].ntl-composer-ghost:not([data-composer-composing]) p:last-child::after{content:var(--dsh-composer-hint,var(--ntl-composer-ghost));color:var(--dsw-alias-label-caption,GrayText);pointer-events:none;user-select:none}\n[data-composer-input].ntl-composer-ghost[data-ntl-ghost-blank-line] p:last-child{position:relative}\n[data-composer-input].ntl-composer-ghost[data-ntl-ghost-blank-line] p:last-child::after{position:absolute;inset:0 auto auto 0;width:100%}\n.ntl-composer-ghost + [data-composer-placeholder]{visibility:hidden}\n@container (max-width:490px){.ntl-workspace-grid{grid-template-columns:minmax(0,1fr)}.ntl-library{display:none}.ntl-nav-toggle{display:inline-block}.ntl-show-library .ntl-library{display:flex}.ntl-show-library .ntl-document{display:none}}\n';
+  var client_default = ':is(.ntl-notebook, .ntl-dialog, .ntl-toast) {\n  --ntl-surface: var(--dsw-alias-bg-layer-1, #fff);\n  --ntl-ink: var(--dsw-alias-label-primary, #1b2433);\n  --ntl-muted: var(--dsw-alias-label-secondary, #526174);\n  --ntl-line: var(--dsw-alias-border-l2, #dfe4ec);\n  --ntl-accent: var(--dsw-alias-state-business-primary, #315fb4);\n  --ntl-on-accent: var(--dsw-alias-label-primary-foreground, #fff);\n  --ntl-fill: var(--dsw-alias-button-primary-fill, #315fb4);\n  --ntl-fill-hover: var(--dsw-alias-button-primary-hover, #254b93);\n  --ntl-hover: var(--dsw-alias-interactive-bg-hover, #edf0f5);\n  --ntl-tint: color-mix(in srgb, var(--ntl-accent) 11%, var(--ntl-surface));\n  --ntl-rail: color-mix(in srgb, var(--ntl-ink) 3%, var(--ntl-surface));\n  --ntl-mat: color-mix(in srgb, var(--ntl-ink) 5%, var(--ntl-surface));\n  --ntl-error: var(--dsw-alias-state-error, #bb3043);\n  --ntl-font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;\n}\n\n.ntl-host, .ntl-notebook {\n  width: 100%;\n  height: 100%;\n  min-height: 0;\n  box-sizing: border-box;\n}\n\n.ntl-notebook {\n  display: flex;\n  flex-direction: column;\n  container-type: inline-size;\n  color: var(--ntl-ink);\n  background: var(--ntl-surface);\n  font: 13px/1.45 var(--ntl-font);\n}\n\n.ntl-notebook *, .ntl-notebook *::before, .ntl-notebook *::after {\n  box-sizing: border-box;\n}\n\n.ntl-notebook [hidden] { display: none; }\n\n.ntl-workspace-bar, .ntl-workspace-identity, .ntl-workspace-actions,\n.ntl-pagebar, .ntl-bookpick, .ntl-placement, .ntl-workspace-footer {\n  display: flex;\n  align-items: center;\n}\n\n.ntl-workspace-bar {\n  position: relative;\n  z-index: 14;\n  justify-content: space-between;\n  flex-wrap: wrap;\n  gap: 6px 12px;\n  min-height: 50px;\n  padding: 8px 14px;\n  border-bottom: 1px solid var(--ntl-line);\n}\n\n.ntl-workspace-identity { gap: 8px; }\n.ntl-workspace-identity strong { font-size: 14px; font-weight: 650; white-space: nowrap; }\n.ntl-workspace-actions { gap: 6px; flex-wrap: wrap; }\n\n.ntl-workspace-bar button, .ntl-menu summary, .ntl-menu-items button,\n.ntl-placement button, .ntl-status button, .ntl-dialog button, .ntl-launch {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  min-height: 30px;\n  padding: 4px 8px;\n  border: 1px solid transparent;\n  border-radius: 6px;\n  background: transparent;\n  color: inherit;\n  cursor: pointer;\n  font: inherit;\n  white-space: nowrap;\n}\n\n.ntl-workspace-bar button:hover, .ntl-menu summary:hover, .ntl-menu[open] > summary,\n.ntl-menu-items button:hover, .ntl-placement button:hover, .ntl-status button:hover,\n.ntl-dialog button:hover, .ntl-tree:hover, .ntl-launch:hover {\n  background: var(--ntl-hover, var(--dsw-alias-interactive-bg-hover, #edf0f5));\n}\n\n:is(.ntl-workspace-bar, .ntl-placement, .ntl-dialog) button.ntl-primary {\n  border-color: var(--ntl-fill);\n  background: var(--ntl-fill);\n  color: var(--ntl-on-accent);\n  font-weight: 600;\n}\n\n:is(.ntl-workspace-bar, .ntl-placement, .ntl-dialog) button.ntl-primary:hover {\n  background: var(--ntl-fill-hover);\n  border-color: var(--ntl-fill-hover);\n}\n\n.ntl-dialog button:not(.ntl-primary), .ntl-placement button:not(.ntl-primary) {\n  border-color: var(--ntl-line);\n}\n\n.ntl-dialog button:disabled { opacity: .48; cursor: default; }\n\n.ntl-new-label { display: inline-flex; align-items: center; gap: 5px; }\n.ntl-new-label [aria-hidden] { font-size: 16px; line-height: 1; }\n.ntl-launch { margin-inline: 6px; }\n\n.ntl-workspace-bar .ntl-icon-button, .ntl-menu-icon > summary {\n  width: 30px;\n  min-width: 30px;\n  padding: 0;\n}\n\n.ntl-icon-button[aria-expanded="true"] {\n  background: var(--ntl-tint);\n  color: var(--ntl-accent);\n}\n\n.ntl-icon-library {\n  position: relative;\n  display: block;\n  width: 16px;\n  height: 13px;\n  border: 1.5px solid currentColor;\n  border-radius: 3px;\n}\n\n.ntl-icon-library::after {\n  position: absolute;\n  inset: 0 auto 0 4px;\n  width: 1.5px;\n  background: currentColor;\n  content: "";\n}\n\n:is(.ntl-notebook, .ntl-dialog) :is(button, summary, select, input, textarea):focus-visible,\n.ntl-pagebar h2:focus-visible {\n  outline: 2px solid var(--ntl-accent);\n  outline-offset: 2px;\n}\n\n.ntl-language, .ntl-bookpick select, .ntl-search input,\n.ntl-dialog :is(input, select, textarea) {\n  min-width: 0;\n  max-width: 100%;\n  min-height: 30px;\n  padding: 4px 7px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 6px;\n  background: var(--ntl-surface);\n  color: var(--ntl-ink);\n  font: inherit;\n}\n\n.ntl-language { cursor: pointer; color: var(--ntl-muted); background: var(--ntl-rail); }\n.ntl-language:disabled { opacity: .5; cursor: default; }\n\n.ntl-workspace-grid {\n  flex: 1;\n  display: grid;\n  grid-template-columns: clamp(160px, 25%, 220px) minmax(0, 1fr);\n  min-height: 0;\n}\n\n.ntl-notebook:is([data-library="closed"], [data-layout="compact"]) .ntl-workspace-grid {\n  grid-template-columns: minmax(0, 1fr);\n}\n\n.ntl-library {\n  display: flex;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  border-inline-end: 1px solid var(--ntl-line);\n  background: var(--ntl-rail);\n}\n\n.ntl-nav-head {\n  position: relative;\n  z-index: 10;\n  display: grid;\n  gap: 8px;\n  padding: 12px 10px 8px;\n}\n\n.ntl-bookpick { gap: 4px; }\n.ntl-bookpick select {\n  flex: 1;\n  width: 100%;\n  font-weight: 600;\n}\n\n.ntl-search { position: relative; color: var(--ntl-muted); }\n\n.ntl-search::before, .ntl-search::after {\n  position: absolute;\n  inset-inline-start: 10px;\n  pointer-events: none;\n  content: "";\n}\n\n.ntl-search::before {\n  top: 10px;\n  width: 8px;\n  height: 8px;\n  border: 1.4px solid currentColor;\n  border-radius: 50%;\n}\n\n.ntl-search::after {\n  top: 17px;\n  inset-inline-start: 17px;\n  width: 4px;\n  height: 1.4px;\n  transform: rotate(45deg);\n  transform-origin: left;\n  background: currentColor;\n}\n\n.ntl-search input { width: 100%; padding-inline-start: 27px; }\n.ntl-search input::placeholder { color: var(--ntl-muted); }\n\n.ntl-nav-scroll {\n  flex: 1;\n  min-height: 0;\n  overflow: auto;\n  overscroll-behavior: contain;\n  padding: 0 10px 12px;\n}\n\n.ntl-nav-label {\n  padding: 9px 8px 4px;\n  color: var(--ntl-muted);\n  font-size: 11px;\n  font-weight: 650;\n}\n\n.ntl-sections-wrap { margin-bottom: 8px; }\n\n.ntl-sections, .ntl-pages { display: grid; gap: 2px; }\n\n.ntl-tree {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  width: 100%;\n  min-width: 0;\n  min-height: 32px;\n  padding: 5px 7px;\n  padding-inline-start: calc(7px + var(--ntl-indent, 0px));\n  border: 0;\n  border-inline-start: 2px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: var(--ntl-ink);\n  cursor: pointer;\n  text-align: start;\n  font: inherit;\n}\n\n.ntl-tree[aria-current] {\n  border-inline-start-color: var(--ntl-accent);\n  background: var(--ntl-tint);\n  color: var(--ntl-ink);\n  font-weight: 650;\n}\n\n.ntl-tree:is(.ntl-section-row, .ntl-page-row)::before {\n  width: 10px;\n  height: 12px;\n  flex: 0 0 10px;\n  border: 1px solid currentColor;\n  border-radius: 2px;\n  opacity: .65;\n  content: "";\n}\n\n.ntl-tree.ntl-section-row::before { height: 10px; border-inline-start-width: 3px; }\n.ntl-tree[data-kind="group"]::before { border-top-width: 3px; }\n\n.ntl-row-title, .ntl-result-path, .ntl-page-section {\n  display: block;\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.ntl-result { display: grid; min-width: 0; }\n.ntl-result-path { color: var(--ntl-muted); font-size: 11px; font-weight: 400; }\n.ntl-muted { margin: 6px 8px; color: var(--ntl-muted); }\n\n.ntl-document {\n  display: flex;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  overflow: hidden;\n}\n\n.ntl-pagebar {\n  position: relative;\n  z-index: 7;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 8px;\n  min-width: 0;\n  padding: 12px 15px 10px;\n  border-bottom: 1px solid var(--ntl-line);\n}\n\n.ntl-pagebar:empty { display: none; }\n.ntl-page-heading { display: grid; gap: 2px; min-width: 0; }\n.ntl-page-section { color: var(--ntl-muted); font-size: 11px; }\n\n.ntl-pagebar h2 {\n  display: -webkit-box;\n  overflow: hidden;\n  margin: 0;\n  overflow-wrap: anywhere;\n  font-size: 20px;\n  font-weight: 665;\n  line-height: 1.28;\n  -webkit-box-orient: vertical;\n  -webkit-line-clamp: 2;\n}\n\n.ntl-page-tags {\n  display: flex;\n  gap: 4px;\n  flex-wrap: wrap;\n  min-width: 0;\n  margin-top: 3px;\n}\n\n.ntl-tag {\n  max-width: 100%;\n  overflow: hidden;\n  padding: 1px 6px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 4px;\n  color: var(--ntl-muted);\n  font-size: 11px;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.ntl-paper-root { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }\n\n.ntl-placement {\n  gap: 6px;\n  flex-wrap: wrap;\n  padding: 6px 10px;\n  border-bottom: 1px solid var(--ntl-line);\n  background: var(--ntl-tint);\n}\n\n.ntl-placement-hint { margin-inline-end: auto; }\n\n.ntl-empty {\n  display: grid;\n  justify-items: center;\n  gap: 8px;\n  padding: 40px 18px;\n  color: var(--ntl-muted);\n  text-align: center;\n}\n\n.ntl-empty h2 { margin: 0; color: var(--ntl-ink); font-size: 17px; }\n.ntl-empty p { margin: 0; }\n\n.ntl-empty-sheet {\n  width: 25px;\n  height: 31px;\n  border: 1px solid currentColor;\n  border-radius: 4px;\n}\n\n.ntl-workspace-footer {\n  justify-content: space-between;\n  gap: 2px 8px;\n  flex-wrap: wrap;\n  min-height: 34px;\n  padding: 1px 8px 1px 13px;\n  border-top: 1px solid var(--ntl-line);\n  background: var(--ntl-rail);\n}\n\n.ntl-status {\n  display: flex;\n  align-items: center;\n  gap: 4px 6px;\n  flex-wrap: wrap;\n  min-width: 0;\n  color: var(--ntl-muted);\n  font-size: 11px;\n  overflow-wrap: anywhere;\n}\n\n.ntl-status::before {\n  display: block;\n  width: 6px;\n  height: 6px;\n  flex: 0 0 6px;\n  border-radius: 50%;\n  background: currentColor;\n  content: "";\n}\n\n.ntl-status[data-state="saved"]::before { background: #479276; }\n.ntl-status[data-state="pending"]::before { background: #ba842c; }\n.ntl-status[data-state="error"]::before, .ntl-error { color: var(--ntl-error); }\n.ntl-status button { border-color: var(--ntl-line); }\n.ntl-paper-controls { margin-inline-start: auto; }\n.ntl-paper-controls:empty { display: none; }\n\n.ntl-menu { position: relative; min-width: 0; }\n\n.ntl-menu > summary {\n  gap: 6px;\n  color: var(--ntl-muted);\n  list-style: none;\n}\n\n.ntl-menu > summary::-webkit-details-marker { display: none; }\n\n.ntl-menu > summary::after {\n  width: 6px;\n  height: 6px;\n  margin-block: -3px 0;\n  border: solid currentColor;\n  border-width: 0 1px 1px 0;\n  transform: rotate(45deg);\n  content: "";\n}\n\n.ntl-menu-items {\n  position: absolute;\n  inset-block-start: calc(100% + 4px);\n  inset-inline-end: 0;\n  z-index: 19;\n  display: grid;\n  min-width: max(100%, 128px);\n  max-height: min(55vh, 420px);\n  overflow: auto;\n  padding: 4px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 8px;\n  background: var(--ntl-surface);\n  box-shadow: 0 6px 20px #121e342b;\n}\n\n.ntl-menu-items button { justify-content: flex-start; text-align: start; }\n\n.ntl-menu-icon .ntl-menu-label { display: none; }\n\n.ntl-menu-icon > summary::after {\n  width: auto;\n  height: auto;\n  margin: 0;\n  border: 0;\n  transform: none;\n  font-weight: 700;\n  letter-spacing: .08em;\n  content: "\xB7\xB7\xB7";\n}\n\n.ntl-dialog {\n  width: min(560px, calc(100vw - 28px));\n  max-height: min(80vh, 820px);\n  overflow: auto;\n  margin: auto;\n  padding: 18px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 10px;\n  background: var(--ntl-surface);\n  color: var(--ntl-ink);\n  box-shadow: 0 14px 42px #2030473d;\n  font: 14px/1.47 var(--ntl-font);\n}\n\n.ntl-dialog::backdrop { background: #101d3560; }\n.ntl-dialog h2 { margin: 0 0 12px; font-size: 18px; }\n.ntl-dialog-content, .ntl-dialog-content label { display: grid; gap: 8px; }\n.ntl-dialog-content p { margin: 3px 0; }\n.ntl-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; }\n.ntl-dialog-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; overflow-wrap: anywhere; }\n\n.ntl-materials, .ntl-material { display: grid; gap: 8px; min-width: 0; }\n\n.ntl-material {\n  padding: 8px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 6px;\n  background: var(--ntl-rail);\n}\n\n.ntl-material img {\n  width: auto;\n  max-width: 100%;\n  max-height: 35vh;\n  object-fit: contain;\n  object-position: left center;\n}\n\n.ntl-material textarea { resize: vertical; }\n\n.ntl-toast {\n  position: fixed;\n  z-index: 2147483647;\n  inset: auto 18px 18px auto;\n  max-width: min(470px, calc(100vw - 40px));\n  box-sizing: border-box;\n  padding: 10px 14px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 8px;\n  background: var(--ntl-surface);\n  color: var(--ntl-ink);\n  box-shadow: 0 5px 18px #20304738;\n  font: 14px/1.4 var(--ntl-font);\n}\n\n.ntl-toast-error { color: var(--ntl-error); }\n\n[data-composer-input].ntl-composer-ghost:not([data-composer-composing]) p:last-child::after {\n  content: var(--dsh-composer-hint, var(--ntl-composer-ghost));\n  color: var(--dsw-alias-label-caption, GrayText);\n  pointer-events: none;\n  user-select: none;\n}\n\n[data-composer-input].ntl-composer-ghost[data-ntl-ghost-blank-line] p:last-child { position: relative; }\n\n[data-composer-input].ntl-composer-ghost[data-ntl-ghost-blank-line] p:last-child::after {\n  position: absolute;\n  inset: 0 auto auto 0;\n  width: 100%;\n}\n\n.ntl-composer-ghost + [data-composer-placeholder] { visibility: hidden; }\n\n@container (max-width: 450px) {\n  .ntl-workspace-bar { padding-inline: 8px; }\n  .ntl-workspace-identity { gap: 5px; }\n  .ntl-pagebar { padding-inline: 10px; }\n  .ntl-pagebar h2 { font-size: 18px; }\n  .ntl-resource-menu .ntl-menu-label, .ntl-page-menu .ntl-menu-label { display: none; }\n\n  :is(.ntl-resource-menu, .ntl-page-menu) > summary {\n    width: 30px;\n    padding: 0;\n  }\n\n  :is(.ntl-resource-menu, .ntl-page-menu) > summary::after {\n    width: auto;\n    height: auto;\n    margin: 0;\n    border: 0;\n    transform: none;\n    font-weight: 700;\n    letter-spacing: .08em;\n    content: "\xB7\xB7\xB7";\n  }\n}\n';
 
   // lib/client.js
   var name = "dsh-note-to-learn";

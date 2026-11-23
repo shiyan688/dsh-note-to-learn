@@ -1,6 +1,6 @@
 {
   "name": "dsh-note-to-learn",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Capture web and PDF excerpts, ask AI about selections, and save replies in editable DeepSeek Harness notes.",
   "repository": {
     "type": "git",
