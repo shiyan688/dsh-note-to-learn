@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
+import { apply } from '../lib/index.js'
 import { registerNoteTools } from '../lib/note-tools.js'
 import { createStore } from '../lib/store.js'
 
@@ -57,7 +58,7 @@ test('agent boundaries exclude foreign workspaces, trashed ancestors, and image 
   await assert.rejects(call('note_read', { pageId: hidden.pageId }), /找不到/)
   await assert.rejects(call('note_read', { pageId: created.pageId, workspace: cwd }, other), /未知参数/)
   await assert.rejects(call('note_search', { query: '  ' }), /必须包含内容/)
-  assert.equal(registered.get('note_read').when({ agent: { session: { header: { cwd: 'relative' } } } }), false)
+  await assert.rejects(call('note_read', { pageId: created.pageId }, 'relative'), /真实工作区/)
   const image = (await call('note_read', { pageId: created.pageId, blockId: 'picture' })).blocks[0]
   assert.equal(image.text, 'Image OCR target')
   assert.equal(image.sourcePage, 2)
@@ -118,4 +119,76 @@ test('an Agent can choose a native layout and update a real, versioned card', as
   await assert.rejects(call('note_edit', update), /卡片已变化/)
   await assert.rejects(call('note_edit', { pageId, mode: 'append_card', card: { type: 'two-card', probabilities: { AA: 1 } } }), /未知参数/)
   await assert.rejects(call('note_edit', { pageId, mode: 'append_card', card: { type: 'two-card', rule: 'unknown' } }), /无效/)
+  await assert.rejects(call('note_edit', { pageId, mode: 'append_card', card: { type: 'two-card', summary: 'x'.repeat(2001) } }), /2000/)
+})
+
+test('the installed tools return complete schemas after disposal and reinstallation, even for an id-only Agent', async () => {
+  const registry = new Map()
+  // DSH 0.2.3-alpha.2 refuses an installation scope when an output schema is unsupported.
+  const supported = ['type', 'properties', 'required', 'additionalProperties', 'items', 'enum', 'description']
+  function checkSchema(schema) {
+    assert.equal(typeof schema.type, 'string')
+    for (const key of Object.keys(schema)) assert.ok(supported.includes(key), `Unsupported schema keyword: ${key}`)
+    if (schema.type === 'object') {
+      assert.equal(schema.additionalProperties, false)
+      assert.ok(Array.isArray(schema.required))
+      for (const key of schema.required) assert.ok(Object.hasOwn(schema.properties, key))
+      for (const property of Object.values(schema.properties)) checkSchema(property)
+    } else if (schema.type === 'array') checkSchema(schema.items)
+  }
+  function install() {
+    const disposers = []
+    apply({
+      effect(installEffect) { disposers.push(installEffect()) },
+      inject([service], inject) {
+        if (service !== 'tools') return
+        inject({
+          tools: { register(tool, options) {
+            assert.equal(registry.has(tool.name), false)
+            checkSchema(tool.output.schema)
+            registry.set(tool.name, { tool, options })
+            disposers.push(() => registry.delete(tool.name))
+          } },
+        })
+      },
+    })
+    return () => { for (const dispose of disposers.reverse()) dispose() }
+  }
+  function requestSchemas(agent) {
+    return Array.from(registry.values()).filter(({ options }) => options?.when?.({ agent }) ?? true)
+      .map(({ tool: { name, description, parameters } }) => ({ name, description, parameters }))
+  }
+  const oldAgent = { id: 'already-open' }
+  const remove = install()
+  const before = requestSchemas(oldAgent)
+  remove()
+  assert.deepEqual(requestSchemas(oldAgent), [])
+  const cleanup = install()
+  try {
+    for (const agent of [oldAgent, { id: 'new-agent', session: { header: {} } }]) {
+      const schemas = requestSchemas(agent)
+      assert.deepEqual(schemas, before)
+      assert.deepEqual(schemas.map(schema => schema.name).sort(), ['note_create', 'note_edit', 'note_read', 'note_search'])
+      for (const schema of schemas) {
+        assert.ok(schema.description)
+        assert.deepEqual(JSON.parse(JSON.stringify(schema)), schema)
+        checkSchema(schema.parameters)
+      }
+      await assert.rejects(registry.get('note_search').tool.execute({ query: 'test' }, { agent }), /真实工作区/)
+    }
+  } finally { cleanup() }
+})
+
+test('execution resolves the workspace lazily from the session and workspace fallbacks', async t => {
+  const { cwd, call, registered } = await setup(t)
+  const { pageId } = await call('note_create', { title: 'Fallback workspace', markdown: 'Observable note' })
+  const search = registered.get('note_search').tool
+  for (const agent of [
+    { session: { header: {}, cwd } },
+    { session: { header: { cwd: 'relative' } }, workspace: { path: cwd } },
+    { workspace: cwd },
+  ]) {
+    const result = await search.execute({ query: 'Observable' }, { agent })
+    assert.equal(result.pages[0].pageId, pageId)
+  }
 })

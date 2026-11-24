@@ -196,6 +196,7 @@
   padding: 6px 8px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  overflow-x: auto;
   font: 18px/1.5 system-ui, "Microsoft YaHei", sans-serif;
 }
 .nl-paper-edit h2, .nl-paper-edit h3 { margin-block: 0.25em; font-weight: 700; line-height: 1.25; }
@@ -208,7 +209,8 @@
 .nl-paper-edit a, .nl-paper-reference:is(a, button) { color: var(--nl-paper-blue); text-decoration: underline; }
 .nl-paper-edit table { border-collapse: collapse; max-width: 100%; }
 .nl-paper-edit th, .nl-paper-edit td {
-  min-width: 60px;
+  min-width: 5em;
+  overflow-wrap: break-word;
   padding: 3px 7px;
   border: 1px solid #a2b4c7;
 }
@@ -331,7 +333,7 @@
   overflow-x: auto;
   max-width: 100%;
 }
-.nl-paper-markdown-preview pre {
+.nl-paper-edit pre {
   padding: 5px 7px;
   background: #eef3f8;
   white-space: pre-wrap;

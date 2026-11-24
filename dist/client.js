@@ -68158,6 +68158,53 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     return root;
   }
 
+  // lib/paper-flow.js
+  var blockGap = 24;
+  var bottomMargin = 36;
+  function horizontallyOverlaps(a, b) {
+    return a.x < b.x + b.width && b.x < a.x + a.width;
+  }
+  function isLegacyAppend(block2, page) {
+    return block2.placement === void 0 && block2.x === 38 && block2.width === Math.max(200, page.width - 76) && (block2.kind === "text" && typeof block2.markdown === "string" || block2.kind === "card");
+  }
+  function measurePaperLayout(page, measureHeight) {
+    const ordered = page.blocks.toSorted((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0));
+    const bounds = /* @__PURE__ */ new Map();
+    const fixed = [];
+    const flowing = [];
+    let legacyBottom = -Infinity;
+    for (const block2 of ordered) {
+      const { x: x2 = 0, y = 0, width = 0, height: height2 = 0 } = block2;
+      const box = { x: x2, y, width, height: Math.max(height2, measureHeight(block2.id)) };
+      bounds.set(block2.id, box);
+      const legacy = isLegacyAppend(block2, page);
+      const inFlow = block2.placement === "flow" || legacy && y >= legacyBottom;
+      if (legacy) legacyBottom = Math.max(legacyBottom, y + height2);
+      if (inFlow) flowing.push({ box, height: height2 });
+      else fixed.push({ box, height: height2 });
+    }
+    if (page.background) return { bounds, height: page.height };
+    const placed = [];
+    for (const { box, height: savedHeight } of flowing) {
+      let y = box.y;
+      for (const previous of placed) {
+        if (horizontallyOverlaps(box, previous)) y = Math.max(y, previous.y + previous.height + blockGap);
+      }
+      for (const { box: obstacle, height: height2 } of fixed) {
+        if (!horizontallyOverlaps(box, obstacle)) continue;
+        if (box.y < obstacle.y + height2 && obstacle.y < box.y + savedHeight) continue;
+        if (y < obstacle.y + obstacle.height && obstacle.y < y + box.height) {
+          y = obstacle.y + obstacle.height + blockGap;
+        }
+      }
+      box.y = y;
+      placed.push(box);
+    }
+    let height = page.height;
+    for (const box of bounds.values()) height = Math.max(height, box.y + box.height + bottomMargin);
+    return { bounds, height: Math.ceil(height) };
+  }
+
   // lib/paper-layout.js
   var markdown = new MarkdownItCallable({ html: false, breaks: true, linkify: true });
   markdown.renderer.rules.image = (tokens, index) => markdown.utils.escapeHtml(tokens[index].content);
@@ -68513,6 +68560,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     const controller = new win.AbortController();
     const listener = { signal: controller.signal };
     let page = normalizedPage(initialPage ?? { id: identifier(), title: "" });
+    let paperHeight = page.height;
+    let blockBounds = /* @__PURE__ */ new Map();
     let mode = "select";
     let showFormat = false;
     let currentId = null;
@@ -68744,19 +68793,19 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       const available = viewport.clientWidth - parseFloat(paddingLeft) - parseFloat(paddingRight);
       scale2 = zoom ?? (available > 0 ? Math.min(available / page.width, 1) : 1);
       sheet.style.width = `${page.width}px`;
-      sheet.style.height = `${page.height}px`;
+      sheet.style.height = `${paperHeight}px`;
       sheet.style.transform = `scale(${scale2})`;
       sheetFrame.style.width = `${page.width * scale2}px`;
-      sheetFrame.style.height = `${page.height * scale2}px`;
+      sheetFrame.style.height = `${paperHeight * scale2}px`;
       zoomDisplay.textContent = zoom === null ? t("\u9002\u5BBD") : `${Math.round(scale2 * 100)}%`;
       const ratio = Math.min(
         2,
         Math.max(1, (win.devicePixelRatio || 1) * scale2),
-        MAX_SIDE / Math.max(page.width, page.height),
-        Math.sqrt(8e6 / (page.width * page.height))
+        MAX_SIDE / Math.max(page.width, paperHeight),
+        Math.sqrt(8e6 / (page.width * paperHeight))
       );
       const width = Math.ceil(page.width * ratio);
-      const height = Math.ceil(page.height * ratio);
+      const height = Math.ceil(paperHeight * ratio);
       for (const canvas of [ink, selectionInk]) {
         if (canvas.width !== width) canvas.width = width;
         if (canvas.height !== height) canvas.height = height;
@@ -68768,8 +68817,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       const selectionCtx = selectionInk.getContext("2d");
       if (!ctx || !selectionCtx) return;
       for (const [canvas, context] of [[ink, ctx], [selectionInk, selectionCtx]]) {
-        context.setTransform(canvas.width / page.width, 0, 0, canvas.height / page.height, 0, 0);
-        context.clearRect(0, 0, page.width, page.height);
+        context.setTransform(canvas.width / page.width, 0, 0, canvas.height / paperHeight, 0, 0);
+        context.clearRect(0, 0, page.width, paperHeight);
       }
       for (const stroke2 of page.strokes) renderStroke(ctx, stroke2);
       if (toolStroke) renderStroke(ctx, toolStroke);
@@ -68809,13 +68858,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       });
     }
     function blockGeometry(block2) {
-      const node = blockNodes.get(block2.id);
-      return {
-        x: block2.x,
-        y: block2.y,
-        width: block2.width,
-        height: Math.max(block2.height, node?.offsetHeight ?? 0)
-      };
+      return blockBounds.get(block2.id) ?? block2;
     }
     function position(node, block2) {
       node.style.left = `${block2.x}px`;
@@ -68827,6 +68870,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       focusedEditor = null;
       editId = null;
       blockNodes.clear();
+      blockObserver.disconnect();
       const fragment = doc.createDocumentFragment();
       for (const block2 of page.blocks) {
         const item = element3(doc, "article", "nl-paper-block");
@@ -68903,12 +68947,6 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         if (typeof block2.originalText === "string" && block2.originalText.trim()) {
           const original = element3(doc, "details", "nl-note-original");
           original.append(element3(doc, "summary", "", t("\u6458\u5F55\u539F\u6587")), element3(doc, "p", "", block2.originalText));
-          original.addEventListener("toggle", () => {
-            if (original.open && fitContent()) {
-              resize();
-              onChange(page);
-            }
-          }, listener);
           item.append(original);
         }
         const resizer = element3(doc, "button", "nl-paper-resize");
@@ -68921,6 +68959,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         blockNodes.set(block2.id, item);
       }
       objects.replaceChildren(fragment);
+      for (const node of blockNodes.values()) blockObserver.observe(node);
     }
     function render3() {
       refreshBackground();
@@ -68930,15 +68969,16 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       updateControls();
     }
     function fitContent() {
-      if (page.background) return false;
-      const needed = page.blocks.reduce((height2, block2) => {
-        const bottom = block2.y + blockGeometry(block2).height + 36;
-        return Math.max(height2, bottom);
-      }, page.height);
-      const height = Math.min(MAX_SIDE, Math.ceil(needed));
-      if (height === page.height) return false;
-      page = { ...page, height };
-      return true;
+      if (destroyed || gesture) return false;
+      const { bounds, height } = measurePaperLayout(page, (id2) => blockNodes.get(id2)?.offsetHeight ?? 0);
+      blockBounds = bounds;
+      for (const [id2, box] of bounds) {
+        const node = blockNodes.get(id2);
+        if (node) node.style.top = `${box.y}px`;
+      }
+      const changed = height !== paperHeight;
+      paperHeight = height;
+      return changed;
     }
     function renderTextBlock(item, block2) {
       const edit = element3(doc, "div", "nl-paper-edit");
@@ -69082,10 +69122,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         editor.hidden = !editing;
         toggle.textContent = editing ? t("\u9884\u89C8 Markdown") : t("\u7F16\u8F91 Markdown");
         if (editing) editor.focus();
-        else if (fitContent()) {
-          resize();
-          onChange(page);
-        }
+        else if (fitContent()) resize();
       }, listener);
       preview.addEventListener("dblclick", (event) => {
         if (!event.target.closest?.("a")) toggle.click();
@@ -69110,6 +69147,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         if (fitContent()) resize();
         updateControls();
       }
+      if (paperHeight > page.height) page = { ...page, height: paperHeight };
       onChange(page);
     }
     function changeBlocks(blocks, options) {
@@ -69160,8 +69198,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     }
     function extendPage() {
       if (page.background) return notify(t("PDF \u6279\u6CE8\u9875\u91C7\u7528\u539F\u6587\u4EF6\u7684\u7EB8\u9762\u6BD4\u4F8B"));
-      const height = Math.min(MAX_SIDE, page.height + 440);
-      if (height !== page.height) replacePage({ ...page, height });
+      const height = Math.min(MAX_SIDE, paperHeight + 440);
+      if (height > paperHeight) replacePage({ ...page, height });
     }
     function format2(command, value) {
       if (!focusedEditor?.isConnected) {
@@ -69247,7 +69285,12 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       const targetPageId = page.id;
       const materials = Array.isArray(items) ? items : [items];
       const last2 = page.blocks.at(-1);
-      const landing = point ?? nextInsertion ?? (last2 ? { x: last2.x + 12, y: last2.y + blockGeometry(last2).height + 24 } : { x: 38, y: 38 });
+      const explicitLanding = point ?? nextInsertion;
+      const bottom = page.blocks.reduce((max, block2) => {
+        const box = blockGeometry(block2);
+        return Math.max(max, box.y + box.height);
+      }, 0);
+      const landing = explicitLanding ?? (last2 ? { x: last2.x + 12, y: bottom + 24 } : { x: 38, y: 38 });
       const newBlocks = [];
       let y = finite(landing.y, 38);
       for (const material of materials) {
@@ -69266,6 +69309,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
           width: Math.min(isCard || structured ? 640 : 470, page.width - x2),
           height: 38
         };
+        if (!page.background) block2.placement = explicitLanding && !newBlocks.length ? "fixed" : "flow";
         if (material.source !== void 0) block2.source = material.source;
         if (material.kind === "text") {
           block2.text = String(material.markdown ?? material.text ?? "");
@@ -69319,7 +69363,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       const rect = sheet.getBoundingClientRect();
       return {
         x: clamp((event.clientX - rect.left) / scale2, 0, page.width),
-        y: clamp((event.clientY - rect.top) / scale2, 0, page.height),
+        y: clamp((event.clientY - rect.top) / scale2, 0, paperHeight),
         pressure: event.pointerType === "pen" ? finite(event.pressure, 0.6) : 0.65
       };
     }
@@ -69337,7 +69381,12 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
           const moving = event.target.closest("[data-move]");
           const resizing = event.target.closest("[data-resize]");
           if (!moving && !resizing) return;
-          beginGesture(event, { tool: moving ? "move" : "resize", origin: point, block: block2, node: item });
+          beginGesture(event, {
+            tool: moving ? "move" : "resize",
+            origin: point,
+            block: { ...block2, y: blockGeometry(block2).y },
+            node: item
+          });
           return;
         }
         selectBlock(null);
@@ -69385,13 +69434,13 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       if (tool === "move" || tool === "resize") {
         const dx = point.x - origin.x;
         const dy = point.y - origin.y;
-        const changed = { ...block2 };
+        const changed = { ...block2, placement: "fixed" };
         if (tool === "move") {
           changed.x = clamp(block2.x + dx, 0, Math.max(0, page.width - block2.width));
-          changed.y = clamp(block2.y + dy, 0, Math.max(0, page.height - block2.height));
+          changed.y = clamp(block2.y + dy, 0, Math.max(0, paperHeight - block2.height));
         } else {
           changed.width = clamp(block2.width + dx, 80, page.width - block2.x);
-          changed.height = clamp(block2.height + dy, 32, page.height - block2.y);
+          changed.height = clamp(block2.height + dy, 32, paperHeight - block2.y);
           if (block2.kind === "image") {
             const image2 = node.querySelector("img");
             if (image2) image2.style.height = `${changed.height}px`;
@@ -69437,6 +69486,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         toolStroke = null;
         replacePage({ ...page, strokes: [...page.strokes, stroke2] }, { repaint: false });
       }
+      if (fitContent()) resize();
       updateControls();
       drawInk();
     }
@@ -69455,6 +69505,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       }
       toolStroke = null;
       polygon = [];
+      if (fitContent()) resize();
       drawInk();
     }
     function nudge(event, id2) {
@@ -69465,7 +69516,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       const blocks = page.blocks.map((block2) => block2.id === id2 ? {
         ...block2,
         x: clamp(block2.x + direction[0] * amount, 0, Math.max(0, page.width - block2.width)),
-        y: clamp(block2.y + direction[1] * amount, 0, Math.max(0, page.height - block2.height))
+        y: clamp(blockGeometry(block2).y + direction[1] * amount, 0, Math.max(0, paperHeight - block2.height)),
+        placement: "fixed"
       } : block2);
       changeBlocks(blocks);
       blockNodes.get(id2)?.querySelector("[data-move]")?.focus();
@@ -69677,10 +69729,11 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       const origin = sheet.getBoundingClientRect();
       for (const block2 of target.blocks) {
         const node = blockNodes.get(block2.id);
-        if (!node || !intersects(blockGeometry(block2), bounds)) continue;
+        const box = blockGeometry(block2);
+        if (!node || !intersects(box, bounds)) continue;
         const image2 = node.querySelector("img");
         if (image2?.complete && image2.naturalWidth > 0) {
-          ctx.drawImage(image2, block2.x, block2.y, block2.width, block2.height);
+          ctx.drawImage(image2, box.x, box.y, box.width, block2.height);
         }
         const preview = node.querySelector(".nl-paper-edit, .nl-paper-file, .nl-two-card");
         if (preview?.hidden) {
@@ -69711,7 +69764,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       if (text3) return [{ kind: "text", text: text3, source }];
       if (polygon.length > 2) {
         const clip2 = [...polygon];
-        const bounds = selectionBounds(clip2, page.width, page.height);
+        const bounds = selectionBounds(clip2, page.width, paperHeight);
         if (bounds.width < 3 || bounds.height < 3) return [];
         const blob = await renderPng(bounds, clip2);
         return [{
@@ -69745,7 +69798,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     }
     function exportPage() {
       flushEdits();
-      return renderPng({ x: 0, y: 0, width: page.width, height: page.height });
+      if (fitContent()) resize();
+      return renderPng({ x: 0, y: 0, width: page.width, height: paperHeight });
     }
     function setPage(next) {
       if (!next || destroyed || next === page) return;
@@ -69755,6 +69809,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       page = normalizedPage(next);
       if (sameDocument) {
         refreshBackground();
+        fitContent();
         resize();
         return;
       }
@@ -69819,6 +69874,9 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     container.addEventListener("keydown", keyDown, listener);
     doc.addEventListener("selectionchange", updateControls, listener);
     const observer = new win.ResizeObserver(resize);
+    const blockObserver = new win.ResizeObserver(() => {
+      if (fitContent()) resize();
+    });
     observer.observe(viewport);
     render3();
     return {
@@ -69845,6 +69903,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         flushEdits();
         destroyed = true;
         observer.disconnect();
+        blockObserver.disconnect();
         controller.abort();
         zoomGroup.remove();
         container.remove();
@@ -70579,6 +70638,54 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     };
   }
 
+  // lib/note-preview-client.js
+  function connectNotePreviews(document2, mounted) {
+    let disconnect;
+    function connect() {
+      disconnect?.();
+      const session = mounted.getSnapshot();
+      if (!session) return;
+      const controller = new AbortController();
+      const { signal } = controller;
+      const query = new URLSearchParams({ session });
+      let timer;
+      const fetchPreview = (route, params, options) => fetch(`/api/dsh-note-to-learn/${route}?${params}`, {
+        credentials: "same-origin",
+        signal,
+        ...options
+      });
+      async function poll() {
+        try {
+          const response = await fetchPreview("preview-job", query);
+          if (!response.ok) return;
+          const job = await response.json();
+          if (!job || signal.aborted) return;
+          const result = new URLSearchParams({ session, id: job.id });
+          let blob;
+          try {
+            blob = await exportPaperPage(document2, job.page);
+          } catch {
+          }
+          if (!signal.aborted) await fetchPreview("preview-result", result, { method: "POST", body: blob });
+        } catch {
+        } finally {
+          if (!signal.aborted) timer = setTimeout(poll, 2e3);
+        }
+      }
+      disconnect = () => {
+        controller.abort();
+        clearTimeout(timer);
+      };
+      poll();
+    }
+    const unsubscribe = mounted.subscribe(connect);
+    connect();
+    return () => {
+      unsubscribe();
+      disconnect?.();
+    };
+  }
+
   // lib/suggestions.js
   var equation = /\\(?:frac|sqrt|sum|int|begin)\b|[∫∑√∂]|[a-z0-9)\]}]\s*(?:\^|=)\s*[-+({a-z0-9]/iu;
   var code2 = /(?:^|\n)\s*```|\b(?:TypeError|SyntaxError|ReferenceError|stack trace)\b|\b(?:function|def|class|import|SELECT)\s+[\w{]/iu;
@@ -70598,7 +70705,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
   }
 
   // lib/paper.css
-  var paper_default = '.nl-paper {\n  --nl-paper-ink: #26394f;\n  --nl-paper-page: #fffef9;\n  --nl-paper-faint: #e0e7ef;\n  --nl-paper-blue: #245fa2;\n  --nl-paper-mat: var(--ntl-mat, #edf1f5);\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  background: var(--nl-paper-mat);\n  color: var(--ntl-ink, var(--nl-paper-ink));\n  font: 13px/1.45 var(--ntl-font, system-ui, "Microsoft YaHei", sans-serif);\n}\n\n.nl-paper *, .nl-paper *::before, .nl-paper *::after { box-sizing: border-box; }\n.nl-paper [hidden] { display: none; }\n\n.nl-paper-toolbar, .nl-paper-format, .nl-paper-pen, .nl-paper-link-form {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 3px 7px;\n  padding: 5px 9px;\n  background: var(--ntl-surface, #fff);\n  border-bottom: 1px solid var(--ntl-line, var(--nl-paper-faint));\n}\n\n.nl-paper-toolbar { position: relative; z-index: 5; justify-content: space-between; }\n.nl-paper-format, .nl-paper-pen, .nl-paper-link-form { background: var(--ntl-rail, #f8fafc); }\n\n.nl-paper-tools, .nl-paper-actions, .nl-paper-zoom {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 2px;\n  min-width: 0;\n}\n\n.nl-paper-toolbar .nl-paper-shapes > summary,\n.nl-paper-button {\n  min-width: 27px;\n  min-height: 28px;\n  padding: 3px 5px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: inherit;\n  cursor: pointer;\n  font: inherit;\n  font-size: 12px;\n  white-space: nowrap;\n}\n\n.nl-paper-button:hover {\n  background: var(--ntl-hover, #edf3fb);\n}\n\n.nl-paper-shapes[open] > summary,\n.nl-paper-shapes > summary[data-active="true"],\n.nl-paper-button:is([aria-pressed="true"], [aria-expanded="true"]) {\n  background: var(--ntl-tint, #e7f1fe);\n  color: var(--ntl-ink, var(--nl-paper-blue));\n  font-weight: 600;\n}\n\n.nl-paper-shapes > summary::after { width: 5px; height: 5px; }\n.nl-paper-shapes .ntl-menu-items { min-width: 94px; }\n\n.nl-paper-history { font-size: 16px; line-height: 1; }\n\n.nl-paper-delete {\n  position: relative;\n  display: inline-grid;\n  place-items: center;\n}\n\n.nl-paper-delete::before {\n  width: 9px;\n  height: 10px;\n  margin-top: 3px;\n  border: 1px solid currentColor;\n  border-radius: 0 0 2px 2px;\n  content: "";\n}\n\n.nl-paper-delete::after {\n  position: absolute;\n  inset-block-start: 7px;\n  width: 12px;\n  height: 1px;\n  background: currentColor;\n  content: "";\n}\n\n.nl-paper-ask:not(:disabled) {\n  padding-inline: 7px;\n  background: var(--ntl-fill, #245fa2);\n  color: var(--ntl-on-accent, #fff);\n  font-weight: 600;\n}\n\n.nl-paper-ask:not(:disabled):hover { background: var(--ntl-fill-hover, #184d92); }\n\n.nl-paper-button:disabled { opacity: .46; cursor: default; }\n.nl-paper-button:disabled:hover { background: transparent; }\n\n.nl-paper-button:focus-visible, .nl-paper :is(input, summary, .nl-paper-move, .nl-paper-resize):focus-visible {\n  outline: 2px solid var(--ntl-accent, var(--nl-paper-blue));\n  outline-offset: 1px;\n}\n\n.nl-paper-color {\n  width: 24px;\n  height: 24px;\n  padding: 2px;\n  border: 1px solid var(--ntl-line, var(--nl-paper-faint));\n  border-radius: 5px;\n  background: var(--ntl-surface, #fff);\n}\n\n.nl-paper-size { width: 50px; accent-color: var(--ntl-accent, var(--nl-paper-blue)); }\n\n.nl-paper-link-form input {\n  min-width: 0;\n  color: inherit;\n  background: var(--ntl-surface, #fff);\n  border: 1px solid var(--ntl-line, var(--nl-paper-faint));\n  border-radius: 5px;\n  padding: 5px 7px;\n  font: inherit;\n}\n\n.nl-paper-viewport {\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow: auto;\n  overscroll-behavior: contain;\n  padding: 18px;\n}\n\n.nl-paper-sheet-frame {\n  position: relative;\n  margin-inline: auto;\n  overflow: hidden;\n  box-shadow: 0 0 0 1px #5a6a8126, 0 3px 10px #23344e14;\n}\n\n@container (max-width: 450px) {\n  .nl-paper-toolbar { padding-inline: 5px; gap: 2px 6px; }\n  .nl-paper-viewport { padding: 11px; }\n}\n.nl-paper-sheet {\n  position: relative;\n  isolation: isolate;\n  transform-origin: top left;\n  background: var(--nl-paper-page);\n  color: var(--nl-paper-ink);\n  overflow: hidden;\n}\n.nl-paper-sheet[data-tool="text"] { cursor: text; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) {\n  cursor: crosshair;\n  touch-action: none;\n  user-select: none;\n}\n.nl-paper-background, .nl-paper-ink, .nl-paper-objects, .nl-paper-selection {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n}\n.nl-paper-background {\n  object-fit: fill;\n  pointer-events: none;\n  user-select: none;\n}\n.nl-paper-ink, .nl-paper-selection { pointer-events: none; }\n.nl-paper-objects { z-index: 1; }\n.nl-paper-ink { z-index: 2; }\n.nl-paper-selection { z-index: 3; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-objects { pointer-events: none; }\n.nl-paper-block {\n  position: absolute;\n  border: 1px solid transparent;\n  min-width: 0;\n  color: var(--nl-paper-ink);\n}\n.nl-paper-block:is(:hover, :focus-within, .is-selected) { border-color: #94b3d9; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-block { border-color: transparent; }\n.nl-paper-edit {\n  outline: none;\n  min-height: 38px;\n  padding: 6px 8px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  font: 18px/1.5 system-ui, "Microsoft YaHei", sans-serif;\n}\n.nl-paper-edit h2, .nl-paper-edit h3 { margin-block: 0.25em; font-weight: 700; line-height: 1.25; }\n.nl-paper-edit h2 { font-size: 1.35em; }\n.nl-paper-edit h3 { font-size: 1.15em; }\n.nl-paper-edit p { margin-block: 0.2em; }\n.nl-paper-edit ol, .nl-paper-edit ul { margin-block: 0.2em; padding-left: 1.45em; }\n.nl-paper-edit ol { list-style: decimal outside; }\n.nl-paper-edit ul { list-style: disc outside; }\n.nl-paper-edit a, .nl-paper-reference:is(a, button) { color: var(--nl-paper-blue); text-decoration: underline; }\n.nl-paper-edit table { border-collapse: collapse; max-width: 100%; }\n.nl-paper-edit th, .nl-paper-edit td {\n  min-width: 60px;\n  padding: 3px 7px;\n  border: 1px solid #a2b4c7;\n}\n.nl-paper-edit th { font-weight: 700; }\n.nl-paper-edit input[type="checkbox"] { accent-color: var(--nl-paper-blue); cursor: pointer; }\n.nl-note-original {\n  padding: 4px 8px;\n  color: #526174;\n  font-size: 14px;\n}\n.nl-note-original summary { cursor: pointer; }\n.nl-note-original p {\n  max-height: 11em;\n  margin: .35em 0 0;\n  overflow: auto;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n}\n.nl-two-card {\n  display: grid;\n  gap: 8px;\n  padding: 13px 15px;\n  border: 1px solid #c8d7e5;\n  border-radius: 8px;\n  background: #f7fafd;\n  color: var(--nl-paper-ink);\n  font-size: 18px;\n}\n.nl-two-card h3 { margin: 0; font-size: 1.18em; }\n.nl-two-card p { margin: 0; }\n.nl-card-description, .nl-card-explanation { color: #526174; font-size: .9em; }\n.nl-card-rules { display: flex; gap: 5px; flex-wrap: wrap; }\n.nl-two-card .nl-paper-button { font-size: .9em; border-color: #c8d7e5; }\n.nl-two-card .nl-paper-button[aria-pressed="true"] { background: #dceaf9; color: #173e70; }\n.nl-card-graph { display: grid; gap: 4px; font-variant-numeric: tabular-nums; }\n.nl-card-row { display: grid; grid-template-columns: 2em minmax(0, 1fr) 3em; gap: 8px; align-items: center; }\n.nl-card-percent { text-align: end; }\n.nl-card-track { display: block; height: .56em; border-radius: 4px; background: #e0e8f0; }\n.nl-card-fill { display: block; height: 100%; border-radius: inherit; background: #346bab; }\n.nl-card-field { display: grid; gap: 3px; font-size: .9em; font-weight: 600; }\n.nl-card-field textarea {\n  width: 100%;\n  min-width: 0;\n  padding: 3px 6px;\n  border: 1px solid #c8d7e5;\n  border-radius: 4px;\n  background: #fff;\n  color: inherit;\n  font: inherit;\n  font-weight: 400;\n  resize: vertical;\n}\n.nl-card-ask { justify-self: start; }\n.nl-paper-formula {\n  display: inline-block;\n  max-width: 100%;\n  vertical-align: baseline;\n  border-radius: 3px;\n  cursor: text;\n}\n.nl-paper-formula[data-display="block"] {\n  display: block;\n  margin-block: .35em;\n  overflow: auto;\n}\n.nl-paper-formula:has(math):hover { background: #edf4fd; }\n.nl-paper-formula:focus-visible {\n  outline: 2px solid var(--nl-paper-blue);\n  outline-offset: 2px;\n}\n.nl-paper-formula-source {\n  display: inline-block;\n  width: min(20em, 100%);\n  min-width: 5em;\n  max-width: 100%;\n  padding: 2px 4px;\n  border: 1px solid #94b3d9;\n  border-radius: 4px;\n  background: #f4f8fd;\n  color: var(--nl-paper-ink);\n  resize: none;\n  vertical-align: middle;\n  font: 15px/1.4 Consolas, monospace;\n}\n.nl-paper-formula[data-display="block"] .nl-paper-formula-source {\n  display: block;\n  width: 100%;\n  resize: vertical;\n}\n.nl-paper-markdown-toggle {\n  display: block;\n  margin: 2px 4px 0 auto;\n  padding: 2px 6px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: var(--nl-paper-blue);\n  font: inherit;\n  cursor: pointer;\n}\n.nl-paper-markdown-toggle:focus-visible, .nl-paper-markdown-toggle:hover { background: #e7f1fe; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-markdown-toggle {\n  visibility: hidden;\n}\n.nl-paper-markdown-source {\n  width: 100%;\n  min-height: 122px;\n  display: block;\n  resize: vertical;\n  padding: 6px 8px;\n  color: var(--nl-paper-ink);\n  background: #f4f8fd;\n  border: 0;\n  outline: 0;\n  font: 16px/1.5 Consolas, monospace;\n}\n.nl-paper-markdown-preview { white-space: normal; }\n.nl-paper-markdown-preview math[display="block"] {\n  margin-block: .45em;\n  overflow-x: auto;\n  max-width: 100%;\n}\n.nl-paper-markdown-preview pre {\n  padding: 5px 7px;\n  background: #eef3f8;\n  white-space: pre-wrap;\n}\n.nl-paper-move, .nl-paper-resize {\n  position: absolute;\n  display: none;\n  color: var(--nl-paper-blue);\n  background: #eff6ff;\n  border: 1px solid #94b3d9;\n  z-index: 4;\n  padding: 0;\n  touch-action: none;\n}\n.nl-paper-move {\n  left: -1px;\n  top: -22px;\n  height: 22px;\n  min-width: 26px;\n  border-radius: 4px 4px 0 0;\n  cursor: grab;\n}\n.nl-paper-resize {\n  right: -3px;\n  bottom: -3px;\n  width: 13px;\n  height: 13px;\n  border-radius: 3px;\n  cursor: nwse-resize;\n}\n.nl-paper-sheet[data-tool="select"] .nl-paper-block:is(.is-selected, :hover, :focus-within) :is(.nl-paper-move, .nl-paper-resize) {\n  display: block;\n}\n.nl-paper-object-image { display: block; width: 100%; object-fit: fill; user-select: none; }\n.nl-paper-file {\n  appearance: none;\n  display: block;\n  max-width: 100%;\n  margin: 4px;\n  padding: 5px 9px;\n  border: 1px solid var(--nl-paper-faint);\n  border-radius: 6px;\n  color: var(--nl-paper-blue);\n  background: #f4f7ff;\n  font: 15px/1.4 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n  cursor: pointer;\n}\n.nl-paper-reference {\n  display: block;\n  width: fit-content;\n  max-width: 100%;\n  margin: 1px 8px 4px;\n  color: #526b84;\n  font: 13px/1.35 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n}\n.nl-paper-reference:is(button) {\n  padding: 0;\n  border: 0;\n  background: transparent;\n  text-align: start;\n  cursor: pointer;\n}\n.nl-paper-live:not(:empty) {\n  margin: 0;\n  padding: 5px 9px;\n  color: var(--ntl-muted, #45617f);\n  background: var(--ntl-rail, #f8fafc);\n  border-top: 1px solid var(--ntl-line, var(--nl-paper-faint));\n}\n.nl-paper-live:empty { display: none; }\n';
+  var paper_default = '.nl-paper {\n  --nl-paper-ink: #26394f;\n  --nl-paper-page: #fffef9;\n  --nl-paper-faint: #e0e7ef;\n  --nl-paper-blue: #245fa2;\n  --nl-paper-mat: var(--ntl-mat, #edf1f5);\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  background: var(--nl-paper-mat);\n  color: var(--ntl-ink, var(--nl-paper-ink));\n  font: 13px/1.45 var(--ntl-font, system-ui, "Microsoft YaHei", sans-serif);\n}\n\n.nl-paper *, .nl-paper *::before, .nl-paper *::after { box-sizing: border-box; }\n.nl-paper [hidden] { display: none; }\n\n.nl-paper-toolbar, .nl-paper-format, .nl-paper-pen, .nl-paper-link-form {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 3px 7px;\n  padding: 5px 9px;\n  background: var(--ntl-surface, #fff);\n  border-bottom: 1px solid var(--ntl-line, var(--nl-paper-faint));\n}\n\n.nl-paper-toolbar { position: relative; z-index: 5; justify-content: space-between; }\n.nl-paper-format, .nl-paper-pen, .nl-paper-link-form { background: var(--ntl-rail, #f8fafc); }\n\n.nl-paper-tools, .nl-paper-actions, .nl-paper-zoom {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 2px;\n  min-width: 0;\n}\n\n.nl-paper-toolbar .nl-paper-shapes > summary,\n.nl-paper-button {\n  min-width: 27px;\n  min-height: 28px;\n  padding: 3px 5px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: inherit;\n  cursor: pointer;\n  font: inherit;\n  font-size: 12px;\n  white-space: nowrap;\n}\n\n.nl-paper-button:hover {\n  background: var(--ntl-hover, #edf3fb);\n}\n\n.nl-paper-shapes[open] > summary,\n.nl-paper-shapes > summary[data-active="true"],\n.nl-paper-button:is([aria-pressed="true"], [aria-expanded="true"]) {\n  background: var(--ntl-tint, #e7f1fe);\n  color: var(--ntl-ink, var(--nl-paper-blue));\n  font-weight: 600;\n}\n\n.nl-paper-shapes > summary::after { width: 5px; height: 5px; }\n.nl-paper-shapes .ntl-menu-items { min-width: 94px; }\n\n.nl-paper-history { font-size: 16px; line-height: 1; }\n\n.nl-paper-delete {\n  position: relative;\n  display: inline-grid;\n  place-items: center;\n}\n\n.nl-paper-delete::before {\n  width: 9px;\n  height: 10px;\n  margin-top: 3px;\n  border: 1px solid currentColor;\n  border-radius: 0 0 2px 2px;\n  content: "";\n}\n\n.nl-paper-delete::after {\n  position: absolute;\n  inset-block-start: 7px;\n  width: 12px;\n  height: 1px;\n  background: currentColor;\n  content: "";\n}\n\n.nl-paper-ask:not(:disabled) {\n  padding-inline: 7px;\n  background: var(--ntl-fill, #245fa2);\n  color: var(--ntl-on-accent, #fff);\n  font-weight: 600;\n}\n\n.nl-paper-ask:not(:disabled):hover { background: var(--ntl-fill-hover, #184d92); }\n\n.nl-paper-button:disabled { opacity: .46; cursor: default; }\n.nl-paper-button:disabled:hover { background: transparent; }\n\n.nl-paper-button:focus-visible, .nl-paper :is(input, summary, .nl-paper-move, .nl-paper-resize):focus-visible {\n  outline: 2px solid var(--ntl-accent, var(--nl-paper-blue));\n  outline-offset: 1px;\n}\n\n.nl-paper-color {\n  width: 24px;\n  height: 24px;\n  padding: 2px;\n  border: 1px solid var(--ntl-line, var(--nl-paper-faint));\n  border-radius: 5px;\n  background: var(--ntl-surface, #fff);\n}\n\n.nl-paper-size { width: 50px; accent-color: var(--ntl-accent, var(--nl-paper-blue)); }\n\n.nl-paper-link-form input {\n  min-width: 0;\n  color: inherit;\n  background: var(--ntl-surface, #fff);\n  border: 1px solid var(--ntl-line, var(--nl-paper-faint));\n  border-radius: 5px;\n  padding: 5px 7px;\n  font: inherit;\n}\n\n.nl-paper-viewport {\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow: auto;\n  overscroll-behavior: contain;\n  padding: 18px;\n}\n\n.nl-paper-sheet-frame {\n  position: relative;\n  margin-inline: auto;\n  overflow: hidden;\n  box-shadow: 0 0 0 1px #5a6a8126, 0 3px 10px #23344e14;\n}\n\n@container (max-width: 450px) {\n  .nl-paper-toolbar { padding-inline: 5px; gap: 2px 6px; }\n  .nl-paper-viewport { padding: 11px; }\n}\n.nl-paper-sheet {\n  position: relative;\n  isolation: isolate;\n  transform-origin: top left;\n  background: var(--nl-paper-page);\n  color: var(--nl-paper-ink);\n  overflow: hidden;\n}\n.nl-paper-sheet[data-tool="text"] { cursor: text; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) {\n  cursor: crosshair;\n  touch-action: none;\n  user-select: none;\n}\n.nl-paper-background, .nl-paper-ink, .nl-paper-objects, .nl-paper-selection {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n}\n.nl-paper-background {\n  object-fit: fill;\n  pointer-events: none;\n  user-select: none;\n}\n.nl-paper-ink, .nl-paper-selection { pointer-events: none; }\n.nl-paper-objects { z-index: 1; }\n.nl-paper-ink { z-index: 2; }\n.nl-paper-selection { z-index: 3; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-objects { pointer-events: none; }\n.nl-paper-block {\n  position: absolute;\n  border: 1px solid transparent;\n  min-width: 0;\n  color: var(--nl-paper-ink);\n}\n.nl-paper-block:is(:hover, :focus-within, .is-selected) { border-color: #94b3d9; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-block { border-color: transparent; }\n.nl-paper-edit {\n  outline: none;\n  min-height: 38px;\n  padding: 6px 8px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  overflow-x: auto;\n  font: 18px/1.5 system-ui, "Microsoft YaHei", sans-serif;\n}\n.nl-paper-edit h2, .nl-paper-edit h3 { margin-block: 0.25em; font-weight: 700; line-height: 1.25; }\n.nl-paper-edit h2 { font-size: 1.35em; }\n.nl-paper-edit h3 { font-size: 1.15em; }\n.nl-paper-edit p { margin-block: 0.2em; }\n.nl-paper-edit ol, .nl-paper-edit ul { margin-block: 0.2em; padding-left: 1.45em; }\n.nl-paper-edit ol { list-style: decimal outside; }\n.nl-paper-edit ul { list-style: disc outside; }\n.nl-paper-edit a, .nl-paper-reference:is(a, button) { color: var(--nl-paper-blue); text-decoration: underline; }\n.nl-paper-edit table { border-collapse: collapse; max-width: 100%; }\n.nl-paper-edit th, .nl-paper-edit td {\n  min-width: 5em;\n  overflow-wrap: break-word;\n  padding: 3px 7px;\n  border: 1px solid #a2b4c7;\n}\n.nl-paper-edit th { font-weight: 700; }\n.nl-paper-edit input[type="checkbox"] { accent-color: var(--nl-paper-blue); cursor: pointer; }\n.nl-note-original {\n  padding: 4px 8px;\n  color: #526174;\n  font-size: 14px;\n}\n.nl-note-original summary { cursor: pointer; }\n.nl-note-original p {\n  max-height: 11em;\n  margin: .35em 0 0;\n  overflow: auto;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n}\n.nl-two-card {\n  display: grid;\n  gap: 8px;\n  padding: 13px 15px;\n  border: 1px solid #c8d7e5;\n  border-radius: 8px;\n  background: #f7fafd;\n  color: var(--nl-paper-ink);\n  font-size: 18px;\n}\n.nl-two-card h3 { margin: 0; font-size: 1.18em; }\n.nl-two-card p { margin: 0; }\n.nl-card-description, .nl-card-explanation { color: #526174; font-size: .9em; }\n.nl-card-rules { display: flex; gap: 5px; flex-wrap: wrap; }\n.nl-two-card .nl-paper-button { font-size: .9em; border-color: #c8d7e5; }\n.nl-two-card .nl-paper-button[aria-pressed="true"] { background: #dceaf9; color: #173e70; }\n.nl-card-graph { display: grid; gap: 4px; font-variant-numeric: tabular-nums; }\n.nl-card-row { display: grid; grid-template-columns: 2em minmax(0, 1fr) 3em; gap: 8px; align-items: center; }\n.nl-card-percent { text-align: end; }\n.nl-card-track { display: block; height: .56em; border-radius: 4px; background: #e0e8f0; }\n.nl-card-fill { display: block; height: 100%; border-radius: inherit; background: #346bab; }\n.nl-card-field { display: grid; gap: 3px; font-size: .9em; font-weight: 600; }\n.nl-card-field textarea {\n  width: 100%;\n  min-width: 0;\n  padding: 3px 6px;\n  border: 1px solid #c8d7e5;\n  border-radius: 4px;\n  background: #fff;\n  color: inherit;\n  font: inherit;\n  font-weight: 400;\n  resize: vertical;\n}\n.nl-card-ask { justify-self: start; }\n.nl-paper-formula {\n  display: inline-block;\n  max-width: 100%;\n  vertical-align: baseline;\n  border-radius: 3px;\n  cursor: text;\n}\n.nl-paper-formula[data-display="block"] {\n  display: block;\n  margin-block: .35em;\n  overflow: auto;\n}\n.nl-paper-formula:has(math):hover { background: #edf4fd; }\n.nl-paper-formula:focus-visible {\n  outline: 2px solid var(--nl-paper-blue);\n  outline-offset: 2px;\n}\n.nl-paper-formula-source {\n  display: inline-block;\n  width: min(20em, 100%);\n  min-width: 5em;\n  max-width: 100%;\n  padding: 2px 4px;\n  border: 1px solid #94b3d9;\n  border-radius: 4px;\n  background: #f4f8fd;\n  color: var(--nl-paper-ink);\n  resize: none;\n  vertical-align: middle;\n  font: 15px/1.4 Consolas, monospace;\n}\n.nl-paper-formula[data-display="block"] .nl-paper-formula-source {\n  display: block;\n  width: 100%;\n  resize: vertical;\n}\n.nl-paper-markdown-toggle {\n  display: block;\n  margin: 2px 4px 0 auto;\n  padding: 2px 6px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: var(--nl-paper-blue);\n  font: inherit;\n  cursor: pointer;\n}\n.nl-paper-markdown-toggle:focus-visible, .nl-paper-markdown-toggle:hover { background: #e7f1fe; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-markdown-toggle {\n  visibility: hidden;\n}\n.nl-paper-markdown-source {\n  width: 100%;\n  min-height: 122px;\n  display: block;\n  resize: vertical;\n  padding: 6px 8px;\n  color: var(--nl-paper-ink);\n  background: #f4f8fd;\n  border: 0;\n  outline: 0;\n  font: 16px/1.5 Consolas, monospace;\n}\n.nl-paper-markdown-preview { white-space: normal; }\n.nl-paper-markdown-preview math[display="block"] {\n  margin-block: .45em;\n  overflow-x: auto;\n  max-width: 100%;\n}\n.nl-paper-edit pre {\n  padding: 5px 7px;\n  background: #eef3f8;\n  white-space: pre-wrap;\n}\n.nl-paper-move, .nl-paper-resize {\n  position: absolute;\n  display: none;\n  color: var(--nl-paper-blue);\n  background: #eff6ff;\n  border: 1px solid #94b3d9;\n  z-index: 4;\n  padding: 0;\n  touch-action: none;\n}\n.nl-paper-move {\n  left: -1px;\n  top: -22px;\n  height: 22px;\n  min-width: 26px;\n  border-radius: 4px 4px 0 0;\n  cursor: grab;\n}\n.nl-paper-resize {\n  right: -3px;\n  bottom: -3px;\n  width: 13px;\n  height: 13px;\n  border-radius: 3px;\n  cursor: nwse-resize;\n}\n.nl-paper-sheet[data-tool="select"] .nl-paper-block:is(.is-selected, :hover, :focus-within) :is(.nl-paper-move, .nl-paper-resize) {\n  display: block;\n}\n.nl-paper-object-image { display: block; width: 100%; object-fit: fill; user-select: none; }\n.nl-paper-file {\n  appearance: none;\n  display: block;\n  max-width: 100%;\n  margin: 4px;\n  padding: 5px 9px;\n  border: 1px solid var(--nl-paper-faint);\n  border-radius: 6px;\n  color: var(--nl-paper-blue);\n  background: #f4f7ff;\n  font: 15px/1.4 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n  cursor: pointer;\n}\n.nl-paper-reference {\n  display: block;\n  width: fit-content;\n  max-width: 100%;\n  margin: 1px 8px 4px;\n  color: #526b84;\n  font: 13px/1.35 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n}\n.nl-paper-reference:is(button) {\n  padding: 0;\n  border: 0;\n  background: transparent;\n  text-align: start;\n  cursor: pointer;\n}\n.nl-paper-live:not(:empty) {\n  margin: 0;\n  padding: 5px 9px;\n  color: var(--ntl-muted, #45617f);\n  background: var(--ntl-rail, #f8fafc);\n  border-top: 1px solid var(--ntl-line, var(--nl-paper-faint));\n}\n.nl-paper-live:empty { display: none; }\n';
 
   // lib/client.css
   var client_default = ':is(.ntl-notebook, .ntl-dialog, .ntl-toast) {\n  --ntl-surface: var(--dsw-alias-bg-layer-1, #fff);\n  --ntl-ink: var(--dsw-alias-label-primary, #1b2433);\n  --ntl-muted: var(--dsw-alias-label-secondary, #526174);\n  --ntl-line: var(--dsw-alias-border-l2, #dfe4ec);\n  --ntl-accent: var(--dsw-alias-state-business-primary, #315fb4);\n  --ntl-on-accent: var(--dsw-alias-label-primary-foreground, #fff);\n  --ntl-fill: var(--dsw-alias-button-primary-fill, #315fb4);\n  --ntl-fill-hover: var(--dsw-alias-button-primary-hover, #254b93);\n  --ntl-hover: var(--dsw-alias-interactive-bg-hover, #edf0f5);\n  --ntl-tint: color-mix(in srgb, var(--ntl-accent) 11%, var(--ntl-surface));\n  --ntl-rail: color-mix(in srgb, var(--ntl-ink) 3%, var(--ntl-surface));\n  --ntl-mat: color-mix(in srgb, var(--ntl-ink) 5%, var(--ntl-surface));\n  --ntl-error: var(--dsw-alias-state-error, #bb3043);\n  --ntl-font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;\n}\n\n.ntl-host, .ntl-notebook {\n  width: 100%;\n  height: 100%;\n  min-height: 0;\n  box-sizing: border-box;\n}\n\n.ntl-notebook {\n  display: flex;\n  flex-direction: column;\n  container-type: inline-size;\n  color: var(--ntl-ink);\n  background: var(--ntl-surface);\n  font: 13px/1.45 var(--ntl-font);\n}\n\n.ntl-notebook *, .ntl-notebook *::before, .ntl-notebook *::after {\n  box-sizing: border-box;\n}\n\n.ntl-notebook [hidden] { display: none; }\n\n.ntl-workspace-bar, .ntl-workspace-identity, .ntl-workspace-actions,\n.ntl-pagebar, .ntl-bookpick, .ntl-placement, .ntl-workspace-footer {\n  display: flex;\n  align-items: center;\n}\n\n.ntl-workspace-bar {\n  position: relative;\n  z-index: 14;\n  justify-content: space-between;\n  flex-wrap: wrap;\n  gap: 6px 12px;\n  min-height: 50px;\n  padding: 8px 14px;\n  border-bottom: 1px solid var(--ntl-line);\n}\n\n.ntl-workspace-identity { gap: 8px; }\n.ntl-workspace-identity strong { font-size: 14px; font-weight: 650; white-space: nowrap; }\n.ntl-workspace-actions { gap: 6px; flex-wrap: wrap; }\n\n.ntl-workspace-bar button, .ntl-menu summary, .ntl-menu-items button,\n.ntl-placement button, .ntl-status button, .ntl-dialog button, .ntl-launch {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  min-height: 30px;\n  padding: 4px 8px;\n  border: 1px solid transparent;\n  border-radius: 6px;\n  background: transparent;\n  color: inherit;\n  cursor: pointer;\n  font: inherit;\n  white-space: nowrap;\n}\n\n.ntl-workspace-bar button:hover, .ntl-menu summary:hover, .ntl-menu[open] > summary,\n.ntl-menu-items button:hover, .ntl-placement button:hover, .ntl-status button:hover,\n.ntl-dialog button:hover, .ntl-tree:hover, .ntl-launch:hover {\n  background: var(--ntl-hover, var(--dsw-alias-interactive-bg-hover, #edf0f5));\n}\n\n:is(.ntl-workspace-bar, .ntl-placement, .ntl-dialog) button.ntl-primary {\n  border-color: var(--ntl-fill);\n  background: var(--ntl-fill);\n  color: var(--ntl-on-accent);\n  font-weight: 600;\n}\n\n:is(.ntl-workspace-bar, .ntl-placement, .ntl-dialog) button.ntl-primary:hover {\n  background: var(--ntl-fill-hover);\n  border-color: var(--ntl-fill-hover);\n}\n\n.ntl-dialog button:not(.ntl-primary), .ntl-placement button:not(.ntl-primary) {\n  border-color: var(--ntl-line);\n}\n\n.ntl-dialog button:disabled { opacity: .48; cursor: default; }\n\n.ntl-new-label { display: inline-flex; align-items: center; gap: 5px; }\n.ntl-new-label [aria-hidden] { font-size: 16px; line-height: 1; }\n.ntl-launch { margin-inline: 6px; }\n\n.ntl-workspace-bar .ntl-icon-button, .ntl-menu-icon > summary {\n  width: 30px;\n  min-width: 30px;\n  padding: 0;\n}\n\n.ntl-icon-button[aria-expanded="true"] {\n  background: var(--ntl-tint);\n  color: var(--ntl-accent);\n}\n\n.ntl-icon-library {\n  position: relative;\n  display: block;\n  width: 16px;\n  height: 13px;\n  border: 1.5px solid currentColor;\n  border-radius: 3px;\n}\n\n.ntl-icon-library::after {\n  position: absolute;\n  inset: 0 auto 0 4px;\n  width: 1.5px;\n  background: currentColor;\n  content: "";\n}\n\n:is(.ntl-notebook, .ntl-dialog) :is(button, summary, select, input, textarea):focus-visible,\n.ntl-pagebar h2:focus-visible {\n  outline: 2px solid var(--ntl-accent);\n  outline-offset: 2px;\n}\n\n.ntl-language, .ntl-bookpick select, .ntl-search input,\n.ntl-dialog :is(input, select, textarea) {\n  min-width: 0;\n  max-width: 100%;\n  min-height: 30px;\n  padding: 4px 7px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 6px;\n  background: var(--ntl-surface);\n  color: var(--ntl-ink);\n  font: inherit;\n}\n\n.ntl-language { cursor: pointer; color: var(--ntl-muted); background: var(--ntl-rail); }\n.ntl-language:disabled { opacity: .5; cursor: default; }\n\n.ntl-workspace-grid {\n  flex: 1;\n  display: grid;\n  grid-template-columns: clamp(160px, 25%, 220px) minmax(0, 1fr);\n  min-height: 0;\n}\n\n.ntl-notebook:is([data-library="closed"], [data-layout="compact"]) .ntl-workspace-grid {\n  grid-template-columns: minmax(0, 1fr);\n}\n\n.ntl-library {\n  display: flex;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  border-inline-end: 1px solid var(--ntl-line);\n  background: var(--ntl-rail);\n}\n\n.ntl-nav-head {\n  position: relative;\n  z-index: 10;\n  display: grid;\n  gap: 8px;\n  padding: 12px 10px 8px;\n}\n\n.ntl-bookpick { gap: 4px; }\n.ntl-bookpick select {\n  flex: 1;\n  width: 100%;\n  font-weight: 600;\n}\n\n.ntl-search { position: relative; color: var(--ntl-muted); }\n\n.ntl-search::before, .ntl-search::after {\n  position: absolute;\n  inset-inline-start: 10px;\n  pointer-events: none;\n  content: "";\n}\n\n.ntl-search::before {\n  top: 10px;\n  width: 8px;\n  height: 8px;\n  border: 1.4px solid currentColor;\n  border-radius: 50%;\n}\n\n.ntl-search::after {\n  top: 17px;\n  inset-inline-start: 17px;\n  width: 4px;\n  height: 1.4px;\n  transform: rotate(45deg);\n  transform-origin: left;\n  background: currentColor;\n}\n\n.ntl-search input { width: 100%; padding-inline-start: 27px; }\n.ntl-search input::placeholder { color: var(--ntl-muted); }\n\n.ntl-nav-scroll {\n  flex: 1;\n  min-height: 0;\n  overflow: auto;\n  overscroll-behavior: contain;\n  padding: 0 10px 12px;\n}\n\n.ntl-nav-label {\n  padding: 9px 8px 4px;\n  color: var(--ntl-muted);\n  font-size: 11px;\n  font-weight: 650;\n}\n\n.ntl-sections-wrap { margin-bottom: 8px; }\n\n.ntl-sections, .ntl-pages { display: grid; gap: 2px; }\n\n.ntl-tree {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  width: 100%;\n  min-width: 0;\n  min-height: 32px;\n  padding: 5px 7px;\n  padding-inline-start: calc(7px + var(--ntl-indent, 0px));\n  border: 0;\n  border-inline-start: 2px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: var(--ntl-ink);\n  cursor: pointer;\n  text-align: start;\n  font: inherit;\n}\n\n.ntl-tree[aria-current] {\n  border-inline-start-color: var(--ntl-accent);\n  background: var(--ntl-tint);\n  color: var(--ntl-ink);\n  font-weight: 650;\n}\n\n.ntl-tree:is(.ntl-section-row, .ntl-page-row)::before {\n  width: 10px;\n  height: 12px;\n  flex: 0 0 10px;\n  border: 1px solid currentColor;\n  border-radius: 2px;\n  opacity: .65;\n  content: "";\n}\n\n.ntl-tree.ntl-section-row::before { height: 10px; border-inline-start-width: 3px; }\n.ntl-tree[data-kind="group"]::before { border-top-width: 3px; }\n\n.ntl-row-title, .ntl-result-path, .ntl-page-section {\n  display: block;\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.ntl-result { display: grid; min-width: 0; }\n.ntl-result-path { color: var(--ntl-muted); font-size: 11px; font-weight: 400; }\n.ntl-muted { margin: 6px 8px; color: var(--ntl-muted); }\n\n.ntl-document {\n  display: flex;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  overflow: hidden;\n}\n\n.ntl-pagebar {\n  position: relative;\n  z-index: 7;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 8px;\n  min-width: 0;\n  padding: 12px 15px 10px;\n  border-bottom: 1px solid var(--ntl-line);\n}\n\n.ntl-pagebar:empty { display: none; }\n.ntl-page-heading { display: grid; gap: 2px; min-width: 0; }\n.ntl-page-section { color: var(--ntl-muted); font-size: 11px; }\n\n.ntl-pagebar h2 {\n  display: -webkit-box;\n  overflow: hidden;\n  margin: 0;\n  overflow-wrap: anywhere;\n  font-size: 20px;\n  font-weight: 665;\n  line-height: 1.28;\n  -webkit-box-orient: vertical;\n  -webkit-line-clamp: 2;\n}\n\n.ntl-page-tags {\n  display: flex;\n  gap: 4px;\n  flex-wrap: wrap;\n  min-width: 0;\n  margin-top: 3px;\n}\n\n.ntl-tag {\n  max-width: 100%;\n  overflow: hidden;\n  padding: 1px 6px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 4px;\n  color: var(--ntl-muted);\n  font-size: 11px;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.ntl-paper-root { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }\n\n.ntl-placement {\n  gap: 6px;\n  flex-wrap: wrap;\n  padding: 6px 10px;\n  border-bottom: 1px solid var(--ntl-line);\n  background: var(--ntl-tint);\n}\n\n.ntl-placement-hint { margin-inline-end: auto; }\n\n.ntl-empty {\n  display: grid;\n  justify-items: center;\n  gap: 8px;\n  padding: 40px 18px;\n  color: var(--ntl-muted);\n  text-align: center;\n}\n\n.ntl-empty h2 { margin: 0; color: var(--ntl-ink); font-size: 17px; }\n.ntl-empty p { margin: 0; }\n\n.ntl-empty-sheet {\n  width: 25px;\n  height: 31px;\n  border: 1px solid currentColor;\n  border-radius: 4px;\n}\n\n.ntl-workspace-footer {\n  justify-content: space-between;\n  gap: 2px 8px;\n  flex-wrap: wrap;\n  min-height: 34px;\n  padding: 1px 8px 1px 13px;\n  border-top: 1px solid var(--ntl-line);\n  background: var(--ntl-rail);\n}\n\n.ntl-status {\n  display: flex;\n  align-items: center;\n  gap: 4px 6px;\n  flex-wrap: wrap;\n  min-width: 0;\n  color: var(--ntl-muted);\n  font-size: 11px;\n  overflow-wrap: anywhere;\n}\n\n.ntl-status::before {\n  display: block;\n  width: 6px;\n  height: 6px;\n  flex: 0 0 6px;\n  border-radius: 50%;\n  background: currentColor;\n  content: "";\n}\n\n.ntl-status[data-state="saved"]::before { background: #479276; }\n.ntl-status[data-state="pending"]::before { background: #ba842c; }\n.ntl-status[data-state="error"]::before, .ntl-error { color: var(--ntl-error); }\n.ntl-status button { border-color: var(--ntl-line); }\n.ntl-paper-controls { margin-inline-start: auto; }\n.ntl-paper-controls:empty { display: none; }\n\n.ntl-menu { position: relative; min-width: 0; }\n\n.ntl-menu > summary {\n  gap: 6px;\n  color: var(--ntl-muted);\n  list-style: none;\n}\n\n.ntl-menu > summary::-webkit-details-marker { display: none; }\n\n.ntl-menu > summary::after {\n  width: 6px;\n  height: 6px;\n  margin-block: -3px 0;\n  border: solid currentColor;\n  border-width: 0 1px 1px 0;\n  transform: rotate(45deg);\n  content: "";\n}\n\n.ntl-menu-items {\n  position: absolute;\n  inset-block-start: calc(100% + 4px);\n  inset-inline-end: 0;\n  z-index: 19;\n  display: grid;\n  min-width: max(100%, 128px);\n  max-height: min(55vh, 420px);\n  overflow: auto;\n  padding: 4px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 8px;\n  background: var(--ntl-surface);\n  box-shadow: 0 6px 20px #121e342b;\n}\n\n.ntl-menu-items button { justify-content: flex-start; text-align: start; }\n\n.ntl-menu-icon .ntl-menu-label { display: none; }\n\n.ntl-menu-icon > summary::after {\n  width: auto;\n  height: auto;\n  margin: 0;\n  border: 0;\n  transform: none;\n  font-weight: 700;\n  letter-spacing: .08em;\n  content: "\xB7\xB7\xB7";\n}\n\n.ntl-dialog {\n  width: min(560px, calc(100vw - 28px));\n  max-height: min(80vh, 820px);\n  overflow: auto;\n  margin: auto;\n  padding: 18px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 10px;\n  background: var(--ntl-surface);\n  color: var(--ntl-ink);\n  box-shadow: 0 14px 42px #2030473d;\n  font: 14px/1.47 var(--ntl-font);\n}\n\n.ntl-dialog::backdrop { background: #101d3560; }\n.ntl-dialog h2 { margin: 0 0 12px; font-size: 18px; }\n.ntl-dialog-content, .ntl-dialog-content label { display: grid; gap: 8px; }\n.ntl-dialog-content p { margin: 3px 0; }\n.ntl-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; }\n.ntl-dialog-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; overflow-wrap: anywhere; }\n\n.ntl-materials, .ntl-material { display: grid; gap: 8px; min-width: 0; }\n\n.ntl-material {\n  padding: 8px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 6px;\n  background: var(--ntl-rail);\n}\n\n.ntl-material img {\n  width: auto;\n  max-width: 100%;\n  max-height: 35vh;\n  object-fit: contain;\n  object-position: left center;\n}\n\n.ntl-material textarea { resize: vertical; }\n\n.ntl-toast {\n  position: fixed;\n  z-index: 2147483647;\n  inset: auto 18px 18px auto;\n  max-width: min(470px, calc(100vw - 40px));\n  box-sizing: border-box;\n  padding: 10px 14px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 8px;\n  background: var(--ntl-surface);\n  color: var(--ntl-ink);\n  box-shadow: 0 5px 18px #20304738;\n  font: 14px/1.4 var(--ntl-font);\n}\n\n.ntl-toast-error { color: var(--ntl-error); }\n\n[data-composer-input].ntl-composer-ghost:not([data-composer-composing]) p:last-child::after {\n  content: var(--dsh-composer-hint, var(--ntl-composer-ghost));\n  color: var(--dsw-alias-label-caption, GrayText);\n  pointer-events: none;\n  user-select: none;\n}\n\n[data-composer-input].ntl-composer-ghost[data-ntl-ghost-blank-line] p:last-child { position: relative; }\n\n[data-composer-input].ntl-composer-ghost[data-ntl-ghost-blank-line] p:last-child::after {\n  position: absolute;\n  inset: 0 auto auto 0;\n  width: 100%;\n}\n\n.ntl-composer-ghost + [data-composer-placeholder] { visibility: hidden; }\n\n@container (max-width: 450px) {\n  .ntl-workspace-bar { padding-inline: 8px; }\n  .ntl-workspace-identity { gap: 5px; }\n  .ntl-pagebar { padding-inline: 10px; }\n  .ntl-pagebar h2 { font-size: 18px; }\n  .ntl-resource-menu .ntl-menu-label, .ntl-page-menu .ntl-menu-label { display: none; }\n\n  :is(.ntl-resource-menu, .ntl-page-menu) > summary {\n    width: 30px;\n    padding: 0;\n  }\n\n  :is(.ntl-resource-menu, .ntl-page-menu) > summary::after {\n    width: auto;\n    height: auto;\n    margin: 0;\n    border: 0;\n    transform: none;\n    font-weight: 700;\n    letter-spacing: .08em;\n    content: "\xB7\xB7\xB7";\n  }\n}\n';
@@ -70776,6 +70883,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     ctx.effect(() => {
       const styles2 = element2("style", { "data-dsh-note-to-learn": "" }, client_default, paper_default);
       document.head.append(styles2);
+      const stopPreviews = connectNotePreviews(document, ctx.sidebarRight.mounted);
       const dispose = installCapture({
         document,
         getContext() {
@@ -70788,6 +70896,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         reportError: report
       });
       return () => {
+        stopPreviews();
         dispose();
         bridge.dispose();
         styles2.remove();

@@ -11,17 +11,17 @@
 Open the DSH Desktop plug-in manager, choose the official npm registry, and search for `dsh-note-to-learn`. If Desktop has registered the `dsh` command, close Desktop and run the following in PowerShell.
 
 ```powershell
-dsh plugin --profile desktop add dsh-note-to-learn@0.1.5
+dsh plugin --profile desktop add dsh-note-to-learn@0.1.6
 ```
 
-[View the npm package](https://www.npmjs.com/package/dsh-note-to-learn/v/0.1.5)
+[View the npm package](https://www.npmjs.com/package/dsh-note-to-learn/v/0.1.6)
 
 ### Install from GitHub
 
 The plug-in targets DSH Desktop 0.2.2 release candidates. Open Desktop once to initialize its profile. Download the installation package from [GitHub Releases](https://github.com/shiyan688/dsh-note-to-learn/releases) and add it from the Desktop plug-in manager. If DSH Desktop has registered the `dsh` command, you can also close Desktop and install the downloaded package from PowerShell.
 
 ```powershell
-dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.5.tgz'
+dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.6.tgz'
 ```
 
 Reopen Desktop, open a workspace session, and choose **学习笔记** in the right sidebar tools or at the bottom of the left sidebar. Choose **English** in the notebook's **语言 / Language** selector. Menus, dialogs, and new suggested questions follow that setting. Your existing note content and titles stay in the language you wrote them in.
@@ -46,6 +46,8 @@ Notes live in `$DSH_HOME/storages/dsh-note-to-learn`, grouped by workspace path.
 
 The DSH agent can use `note_search`, `note_read`, `note_create`, and `note_edit` in the current workspace. For example, ask it to find the page on eigenvectors and append an explanation. Text replacements use the latest block version and preserve handwriting, images, and other text blocks.
 
+After an edit, the tool result asks the agent to review the page visually. The agent uses `note_read({ pageId, preview: true })` to inspect a full-page image of that revision, fix any overlaps, clipping, or hard-to-read tables, and check a fresh preview. This requires an image-capable model and the session to be open in DSH Desktop or the web client.
+
 ## Develop
 
 ```powershell
@@ -53,6 +55,8 @@ npm ci
 npm test
 npm pack
 ```
+
+Set `DSH_NOTE_TEST_BROWSER` to the Chrome or Edge executable before running `npm test` to exercise real measurements at both zoom levels and the rendered image round trip. Set `DSH_NOTE_TEST_RUNTIME` to a separate npm directory with DSH `0.2.3-alpha.2` installed to exercise reloads against its tool registry.
 
 The browser bundle is built with esbuild. The client talks to the host through DSH's authenticated connection. PDF.js resources and OCR language data are installed as dependencies. See [LICENSE](LICENSE) for the plug-in license. Dependencies carry their own licenses.
 

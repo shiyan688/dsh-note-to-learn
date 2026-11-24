@@ -11,19 +11,19 @@
 在 DSH Desktop 的插件管理中选择官方 npm 注册表，搜索 `dsh-note-to-learn`。如果已经注册了 `dsh` 命令，也可以完全退出 Desktop 后在 PowerShell 中运行：
 
 ```powershell
-dsh plugin --profile desktop add dsh-note-to-learn@0.1.5
+dsh plugin --profile desktop add dsh-note-to-learn@0.1.6
 ```
 
-[查看 npm 安装包](https://www.npmjs.com/package/dsh-note-to-learn/v/0.1.5)
+[查看 npm 安装包](https://www.npmjs.com/package/dsh-note-to-learn/v/0.1.6)
 
 ### 从 GitHub 安装
 
-从 [GitHub Releases](https://github.com/shiyan688/dsh-note-to-learn/releases) 下载 `dsh-note-to-learn-0.1.5.tgz`。插件面向官方 DSH Desktop 0.2.2 候选版本。先启动一次 Desktop 初始化，再在插件管理中添加下载的安装包。
+从 [GitHub Releases](https://github.com/shiyan688/dsh-note-to-learn/releases) 下载 `dsh-note-to-learn-0.1.6.tgz`。插件面向官方 DSH Desktop 0.2.2 候选版本。先启动一次 Desktop 初始化，再在插件管理中添加下载的安装包。
 
 如果已通过 Desktop 注册 `dsh` 命令，也可以完全退出 Desktop，在安装包所在目录执行以下命令。
 
 ```powershell
-dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.5.tgz'
+dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.6.tgz'
 ```
 
 重新打开 Desktop，进入一个有工作区的会话，在右侧栏的工具列表选择 **学习笔记**。左侧栏底部也提供 **学习笔记** 入口。
@@ -50,6 +50,8 @@ dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.5.tgz'
 
 DSH Agent 可调用 `note_search`、`note_read`、`note_create` 和 `note_edit`。例如在当前工作区说「找到《线性代数》里的矩阵笔记，把这段解释追加到那一页」。工具读取文字、OCR 和图片描述，追加可编辑 Markdown，替换已有文字块需要先读取最新版本。编辑保留笔迹、图片和其他文字块。
 
+Agent 完成编辑后会收到视觉检查步骤。它用 `note_read({ pageId, preview: true })` 读取同一修订的整页渲染图，检查重叠、截断和表格可读性，修正后再取图核对。运行时需要在 DSH Desktop 或网页客户端打开该会话，并使用支持图片输入的模型。
+
 ## 开发
 
 ```powershell
@@ -57,6 +59,8 @@ npm ci
 npm test
 npm pack
 ```
+
+设置 `DSH_NOTE_TEST_BROWSER` 为本机 Chrome 或 Edge 的可执行文件路径后运行 `npm test`，可验证两种缩放下的真实高度和截图回传。将 `DSH_NOTE_TEST_RUNTIME` 指向安装了官方 DSH `0.2.3-alpha.2` 的独立 npm 目录，可同时运行实际工具注册表的卸载重装测试。
 
 浏览器入口由 esbuild 构建。前端通过 DSH 认证连接读写笔记，PDF.js 资源和 OCR 语言数据随依赖分发。项目遵循 MIT。PDF.js、Tesseract 及其他依赖由各自的分发包提供许可。
 
