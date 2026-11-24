@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { lassoContains, renderPaperMarkdown, selectionBounds } from '../lib/paper.js'
+import { renderPaperLayout } from '../lib/paper-layout.js'
 
 test('Markdown previews DSH math without treating code or currency as formulas', () => {
   const source = [
@@ -20,6 +21,21 @@ test('a pasted Markdown preview cannot load active html or third-party images', 
   assert.match(preview, /&lt;iframe/)
   assert.match(preview, /chart/)
   assert.doesNotMatch(preview, /<iframe|<img|src="https:\/\/example\.test\/chart/)
+})
+
+test('native answer layout preserves the content of labeled comparisons, derivations and tasks', () => {
+  const source = [
+    '## 方法对比', '', '- **自回归：** 逐词预测', '- 扩散：迭代去噪', '- 流匹配：积分速度场',
+    '', '## 推导步骤', '', '- 写出 $P(A)$', '- 计算联合概率',
+    '', '$$', '\\frac{1}{2}', '$$', '', '## 待办', '', '- [ ] 比较结果', '- [x] 选好样本',
+  ].join('\n')
+  const view = renderPaperLayout(source, 'auto')
+  assert.match(view, /<table>[\s\S]*<td>自回归<\/td><td>逐词预测<\/td>[\s\S]*积分速度场/)
+  assert.match(view, /<ol>[\s\S]*写出 \\\(P\(A\)\\\)[\s\S]*计算联合概率/)
+  assert.ok(view.includes('<div>$$\n\\frac{1}{2}\n$$</div>'))
+  assert.match(view, /<input type="checkbox"> 比较结果/)
+  assert.match(view, /<input type="checkbox" checked> 选好样本/)
+  assert.doesNotMatch(renderPaperLayout('<iframe src="https://example.test"></iframe>', 'auto'), /<iframe/)
 })
 
 test('lasso ranges are clipped to page bounds', () => {

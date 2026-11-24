@@ -92,3 +92,30 @@ test('targeted editing preserves images, strokes and other text and refuses stal
   assert.equal(state.pages[0].blocks[0].text, 'Version after edit')
   assert.equal(state.pages[0].blocks[2].text, 'Question to revisit')
 })
+
+test('an Agent can choose a native layout and update a real, versioned card', async t => {
+  const { call } = await setup(t)
+  const newPage = await call('note_create', {
+    title: 'Two cards', layout: 'steps', markdown: '- Pick first\n- Pick second',
+    card: { type: 'two-card', summary: 'Second draw depends on the first.' },
+  })
+  const { pageId, blockId, cardBlockId } = newPage
+  assert.ok(cardBlockId && cardBlockId !== blockId)
+  const [text, card] = (await call('note_read', { pageId })).blocks
+  assert.equal(text.layout, 'steps')
+  assert.deepEqual(card.card.probabilities, { AB: 0.5, BA: 0.5, AA: 0, BB: 0 })
+  const update = {
+    pageId, mode: 'replace_card', blockId: cardBlockId, expectedBlockVersion: card.blockVersion,
+    card: { type: 'two-card', rule: 'independent', question: 'Why is AA possible?' },
+  }
+  await call('note_edit', update)
+  const [after] = (await call('note_read', { pageId, blockId: cardBlockId })).blocks
+  assert.deepEqual(after.card.probabilities, { AB: 0.25, BA: 0.25, AA: 0.25, BB: 0.25 })
+  assert.equal(after.card.summary, card.card.summary)
+  assert.equal(after.card.question, 'Why is AA possible?')
+  assert.match(after.text, /\| AA \| 25% \|/)
+  assert.equal((await call('note_search', { query: 'aa possible' })).pages[0].pageId, pageId)
+  await assert.rejects(call('note_edit', update), /卡片已变化/)
+  await assert.rejects(call('note_edit', { pageId, mode: 'append_card', card: { type: 'two-card', probabilities: { AA: 1 } } }), /未知参数/)
+  await assert.rejects(call('note_edit', { pageId, mode: 'append_card', card: { type: 'two-card', rule: 'unknown' } }), /无效/)
+})

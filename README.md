@@ -11,19 +11,19 @@
 在 DSH Desktop 的插件管理中选择官方 npm 注册表，搜索 `dsh-note-to-learn`。如果已经注册了 `dsh` 命令，也可以完全退出 Desktop 后在 PowerShell 中运行：
 
 ```powershell
-dsh plugin --profile desktop add dsh-note-to-learn@0.1.4
+dsh plugin --profile desktop add dsh-note-to-learn@0.1.5
 ```
 
-[查看 npm 安装包](https://www.npmjs.com/package/dsh-note-to-learn/v/0.1.4)
+[查看 npm 安装包](https://www.npmjs.com/package/dsh-note-to-learn/v/0.1.5)
 
 ### 从 GitHub 安装
 
-从 [GitHub Releases](https://github.com/shiyan688/dsh-note-to-learn/releases) 下载 `dsh-note-to-learn-0.1.4.tgz`。插件面向官方 DSH Desktop 0.2.2 候选版本。先启动一次 Desktop 初始化，再在插件管理中添加下载的安装包。
+从 [GitHub Releases](https://github.com/shiyan688/dsh-note-to-learn/releases) 下载 `dsh-note-to-learn-0.1.5.tgz`。插件面向官方 DSH Desktop 0.2.2 候选版本。先启动一次 Desktop 初始化，再在插件管理中添加下载的安装包。
 
 如果已通过 Desktop 注册 `dsh` 命令，也可以完全退出 Desktop，在安装包所在目录执行以下命令。
 
 ```powershell
-dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.4.tgz'
+dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.5.tgz'
 ```
 
 重新打开 Desktop，进入一个有工作区的会话，在右侧栏的工具列表选择 **学习笔记**。左侧栏底部也提供 **学习笔记** 入口。
@@ -35,10 +35,14 @@ dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.4.tgz'
 - 在 DSH 侧栏浏览器或 PDF 预览中选中文字并右键。选择添加到对话或保存到笔记。右键也可以开始区域截图。
 - 摘录文字或截图直接进入 DSH 原生草稿，草稿可以编辑和移除材料。点击 DSH 的发送按钮后由当前模型处理。图像分析需要支持图像输入的模型。
 - 在纸面上选中文字、图片或套索圈选笔迹，再选 **选区问 AI**。输入框会按选区类型给出一条本地生成的灰色问题建议。按 Tab 接受，按 Esc 或直接输入可忽略。接受建议只修改草稿。
-- 在 DSH 回答中选中段落、公式或图片并右键保存。打开目标笔记页后点击纸面放置，或选择追加到页面。回填的公式以可编辑 Markdown/LaTeX 保存。
+- 在 DSH 回答中选中段落、公式或图片并右键保存。打开目标笔记页后点击纸面放置，或选择追加到页面。比较表、分步推导和待办清单会整理为可编辑内容，并保留可展开的摘录原文。
 - 资料菜单可以导入本地 PDF 或 Markdown。在线 PDF 需要站点允许直接读取，站点限制时可先下载再导入。PDF 页面按原页码导入并可在上面写批注。
 
 ## 本地笔记
+
+在普通富文本块中输入或粘贴 `$...$` 行内公式、`$$...$$` 独立公式，即可直接显示。单击公式可以修改 LaTeX。
+
+从 **页面操作 → 插入两张卡片** 添加概率练习。切换不放回和独立抽取，比较四种结果的概率，记下总结与疑问。**加入 DSH 草稿** 会把练习状态和你的疑问放进可编辑草稿。
 
 笔记本、分区、子页、页面链接、标签、全文搜索、页面历史、回收站和备份。纸面支持自由排布、富文本、表格、清单、附件、压感笔、荧光、橡皮、形状和撤销重做。图像 OCR 由本机识别简体中文或英语，结果可检索和修改。PDF 导出保留视觉布局，Markdown 和 JSON 备份保留可编辑内容。带素材的 Markdown 导出为 ZIP，里面包含正文和附件。
 
