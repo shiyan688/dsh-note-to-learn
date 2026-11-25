@@ -67795,14 +67795,14 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
   _defineProperty(MarkdownIt, "StateInline", StateInline);
   var MarkdownItCallable = callable(MarkdownIt);
 
-  // lib/notebooks.js
+  // lib/note-tree.js
   function recordsById(records2) {
-    return new Map(records2.map((record) => [record.id, record]));
+    return new Map(records2.filter((record) => typeof record?.id === "string").map((record) => [record.id, record]));
   }
-  function isVisible(record, byId) {
+  function isVisible(record, byId, belongs = () => true) {
     const visited = /* @__PURE__ */ new Set();
     while (record) {
-      if (record.deletedAt || visited.has(record.id)) return false;
+      if (record.deletedAt || visited.has(record.id) || !belongs(record)) return false;
       if (!record.parentId) return true;
       visited.add(record.id);
       record = byId.get(record.parentId);
@@ -67904,6 +67904,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     pages.splice(insertionIndex(pages, destination), 0, ...copied);
     return { state: { ...state, pages }, pageId: newIds.get(pageId) };
   }
+
+  // lib/notebooks.js
   function tagNames(page) {
     return Array.isArray(page.tags) ? page.tags.map((tag) => typeof tag === "string" ? tag : tag?.name ?? tag?.label).filter((tag) => typeof tag === "string" && tag.trim()) : [];
   }

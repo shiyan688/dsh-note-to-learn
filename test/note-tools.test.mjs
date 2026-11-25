@@ -122,6 +122,82 @@ test('an Agent can choose a native layout and update a real, versioned card', as
   await assert.rejects(call('note_edit', { pageId, mode: 'append_card', card: { type: 'two-card', summary: 'x'.repeat(2001) } }), /2000/)
 })
 
+test('an Agent can organize and save a notebook tree shared with the sidebar', async t => {
+  const { store, cwd, call } = await setup(t)
+  const book = await call('note_manage', { action: 'create_notebook', title: 'Research' })
+  const defaultSectionId = book.defaultSectionId
+  assert.equal(book.revision, 1)
+  const notebookId = book.entry.id
+  const group = await call('note_manage', { action: 'create_section', notebookId, title: 'Courses', sectionKind: 'group' })
+  const section = await call('note_manage', { action: 'create_section', notebookId, parentId: group.entry.id, title: 'Statistics' })
+  assert.equal(section.entry.parentId, group.entry.id)
+  const page = await call('note_create', { title: 'Sampling', sectionId: section.entry.id, markdown: 'Sampling notes' })
+  const child = await call('note_create', { title: 'Exercise', parentPageId: page.pageId, markdown: 'Exercise details' })
+  await assert.rejects(call('note_manage', {
+    action: 'move_page', id: page.pageId, sectionId: section.entry.id, parentId: child.pageId,
+  }), /子页/)
+  await call('note_manage', { action: 'move_page', id: page.pageId, sectionId: defaultSectionId })
+  const moved = await call('note_list', { kind: 'page', sectionId: defaultSectionId })
+  assert.deepEqual(moved.entries.map(item => item.id), [page.pageId, child.pageId])
+  assert.equal(moved.entries[1].parentId, page.pageId)
+  const copy = await call('note_manage', { action: 'copy_page', id: page.pageId, sectionId: section.entry.id })
+  assert.notEqual(copy.entry.id, page.pageId)
+  const copied = await call('note_list', { kind: 'page', parentId: copy.entry.id })
+  assert.equal(copied.entries.length, 1)
+  assert.notEqual(copied.entries[0].id, child.pageId)
+  const renamed = await call('note_manage', { action: 'rename', kind: 'page', id: copy.entry.id, title: 'Sampling copy' })
+  const { revision, state } = await store.read(cwd)
+  assert.equal(revision, renamed.revision)
+  assert.equal(state.pages.find(item => item.id === copy.entry.id).title, 'Sampling copy')
+  assert.equal((await call('note_read', { pageId: copy.entry.id })).blocks[0].text, 'Sampling notes')
+  const first = await call('note_list', { kind: 'section', notebookId, limit: 1 })
+  assert.equal(first.entries[0].id, defaultSectionId)
+  assert.equal(first.nextOffset, 1)
+  const remaining = await call('note_list', { kind: 'section', notebookId, offset: first.nextOffset })
+  assert.deepEqual(remaining.entries.map(item => item.id), [group.entry.id, section.entry.id])
+})
+
+test('trash and restore preserve note contents and respect workspace and ancestor boundaries', async t => {
+  const { store, cwd, other, call } = await setup(t)
+  const parent = await call('note_create', { title: 'Parent', markdown: 'Keep this note' })
+  const child = await call('note_create', { title: 'Child', parentPageId: parent.pageId, markdown: 'Keep this child' })
+  const childTarget = { kind: 'page', id: child.pageId }
+  const parentTarget = { kind: 'page', id: parent.pageId }
+  await call('note_manage', { action: 'trash', ...childTarget })
+  const trashed = await call('note_manage', { action: 'trash', ...parentTarget })
+  assert.ok(trashed.entry.deletedAt)
+  assert.equal((await call('note_manage', { action: 'trash', ...parentTarget })).revision, trashed.revision)
+  assert.equal((await call('note_list', { kind: 'page' })).entries.length, 0)
+  assert.equal((await call('note_search', { query: 'Keep' })).pages.length, 0)
+  const recycled = await call('note_list', { kind: 'page', view: 'trash' })
+  assert.deepEqual(recycled.entries.map(item => item.id), [parent.pageId, child.pageId])
+  assert.equal((await store.backup(cwd)).state.pages[0].blocks[0].text, 'Keep this note')
+  await assert.rejects(call('note_manage', { action: 'restore', ...childTarget }), /请先恢复/)
+  await assert.rejects(call('note_manage', { action: 'restore', ...parentTarget }, other), /找不到/)
+  await assert.rejects(call('note_manage', { action: 'trash', ...parentTarget, title: 'Ambiguous' }), /不接受参数/)
+  await call('note_manage', { action: 'restore', ...parentTarget })
+  assert.deepEqual((await call('note_list', { kind: 'page' })).entries.map(item => item.id), [parent.pageId])
+  await call('note_manage', { action: 'restore', ...childTarget })
+  assert.equal((await call('note_read', { pageId: child.pageId })).blocks[0].text, 'Keep this child')
+})
+
+test('removing an attachment block checks its version and leaves it in page history', async t => {
+  const { store, cwd, call } = await setup(t)
+  const { pageId, blockId } = await call('note_create', { title: 'Source', markdown: 'Keep the explanation' })
+  const before = await store.read(cwd)
+  const attachment = { id: 'photo', kind: 'image', name: 'Photo', dataUrl: 'data:image/png;base64,AA==' }
+  before.state.pages[0].blocks.push(attachment)
+  await store.write(cwd, { expectedRevision: before.revision, state: before.state })
+  const [versioned] = (await call('note_read', { pageId, blockId: attachment.id })).blocks
+  const remove = { pageId, mode: 'remove_block', blockId: attachment.id }
+  await assert.rejects(call('note_edit', { ...remove, expectedBlockVersion: 'stale' }), /笔记块已变化/)
+  const result = await call('note_edit', { ...remove, expectedBlockVersion: versioned.blockVersion })
+  assert.deepEqual((await call('note_read', { pageId })).blocks.map(item => item.blockId), [blockId])
+  const [, prior] = await store.history(cwd, pageId)
+  const restored = await store.restore(cwd, { expectedRevision: result.revision, pageId, versionId: prior.id })
+  assert.deepEqual(restored.state.pages[0].blocks[1], attachment)
+})
+
 test('the installed tools return complete schemas after disposal and reinstallation, even for an id-only Agent', async () => {
   const registry = new Map()
   // DSH 0.2.3-alpha.2 refuses an installation scope when an output schema is unsupported.
@@ -168,7 +244,8 @@ test('the installed tools return complete schemas after disposal and reinstallat
     for (const agent of [oldAgent, { id: 'new-agent', session: { header: {} } }]) {
       const schemas = requestSchemas(agent)
       assert.deepEqual(schemas, before)
-      assert.deepEqual(schemas.map(schema => schema.name).sort(), ['note_create', 'note_edit', 'note_read', 'note_search'])
+      assert.deepEqual(schemas.map(schema => schema.name).sort(),
+        ['note_create', 'note_edit', 'note_list', 'note_manage', 'note_read', 'note_search'])
       for (const schema of schemas) {
         assert.ok(schema.description)
         assert.deepEqual(JSON.parse(JSON.stringify(schema)), schema)

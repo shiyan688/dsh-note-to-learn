@@ -7,7 +7,7 @@ import * as notesPlugin from '../lib/index.js'
 
 const runtime = process.env.DSH_NOTE_TEST_RUNTIME
 
-test('DSH alpha.2 admits four complete schemas after the note bundle reloads', { skip: !runtime }, async t => {
+test('DSH alpha.2 admits all note tool schemas after the bundle reloads', { skip: !runtime }, async t => {
   const require = createRequire(resolve(runtime, 'package.json'))
   assert.equal(require('@deepseek-ai/dsh-tools/package.json').version, '0.2.3-alpha.2')
   const { Context } = await import(pathToFileURL(require.resolve('@deepseek-ai/cordis')).href)
@@ -17,7 +17,7 @@ test('DSH alpha.2 admits four complete schemas after the note bundle reloads', {
   ctx.provide('systemPrompt', { tools() {} })
   await ctx.plugin(ToolsService)
   const oldAgent = { id: 'open-session' }
-  const names = ['note_create', 'note_edit', 'note_read', 'note_search']
+  const names = ['note_create', 'note_edit', 'note_list', 'note_manage', 'note_read', 'note_search']
   async function schemas(agent) {
     const toolSet = await ctx.tools.resolve({ agent, modelSelection: {}, signal: new AbortController().signal })
     try { return ctx.tools.schemas(agent, toolSet) } finally { toolSet.dispose() }
