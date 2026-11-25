@@ -4466,6 +4466,19 @@
     "\u6458\u5F55\u539F\u6587": "Original excerpt",
     "\u4E24\u5F20\u5361\u7247": "Two cards",
     "\u63D2\u5165\u4E24\u5F20\u5361\u7247": "Insert Two Cards",
+    "\u63D2\u5165\u53EF\u70B9\u51FB\u6D41\u7A0B\u56FE": "Insert clickable flow diagram",
+    "\u63D2\u5165\u4EA4\u4E92\u6761\u5F62\u56FE": "Insert interactive bar chart",
+    "\u6D41\u7A0B\u6B65\u9AA4": "Process steps",
+    "\u6BD4\u8F83\u6761\u4EF6": "Compare scenarios",
+    "\u5171\u540C\u523B\u5EA6 0\u2013{0}": "Shared scale 0\u2013{0}",
+    "\u56FE\u793A\u6570\u636E\u6709\u8BEF\uFF0C\u8BF7\u5728 Markdown \u6E90\u7801\u4E2D\u4FEE\u6B63\u3002": "Fix the figure data in the Markdown source.",
+    "\u4E24\u6B21\u62BD\u6837\u7684\u8FC7\u7A0B": "How two draws work",
+    "\u7B2C\u4E00\u6B21\u62BD\u53D6": "First draw",
+    "\u7B49\u6982\u7387\u62BD\u5230 A \u6216 B\u3002": "Draw A or B with equal probability.",
+    "\u5E94\u7528\u62BD\u6837\u89C4\u5219": "Apply the sampling rule",
+    "\u6709\u653E\u56DE\u65F6\uFF0C\u7B2C\u4E8C\u6B21\u4ECD\u7136\u53EF\u4EE5\u62BD\u5230\u540C\u4E00\u5F20\u5361\u7247\u3002": "With replacement, the same card can be drawn again.",
+    "\u7B2C\u4E8C\u6B21\u62BD\u53D6": "Second draw",
+    "\u7528\u4E58\u6CD5\u6CD5\u5219\u8BA1\u7B97\u4E24\u6B21\u62BD\u53D6\u7ED3\u679C\u7684\u8054\u5408\u6982\u7387\u3002": "Use the multiplication rule to find the joint probability of the two results.",
     "\u6BD4\u8F83\u4ECE A\u3001B \u4E24\u5F20\u5361\u7247\u4E2D\u7B49\u6982\u7387\u62BD\u53D6\u4E24\u6B21\u7684\u7ED3\u679C\u3002": "Compare the outcomes of two equally likely draws from cards A and B.",
     "\u62BD\u6837\u89C4\u5219": "Sampling rule",
     "\u65E0\u653E\u56DE\u62BD\u6837": "Without replacement",
@@ -4588,6 +4601,43 @@
   function t(message, ...values2) {
     const text3 = language === "en" && Object.hasOwn(messages_en_default, message) ? messages_en_default[message] : message;
     return values2.length ? text3.replace(/\{(\d+)\}/gu, (token, index) => values2[index] ?? token) : text3;
+  }
+
+  // lib/note-components.js
+  var NOTE_LAYOUTS = ["auto", "comparison", "steps", "checklist"];
+  var NOTE_FIGURE_FENCE = "note-figure";
+  var TWO_CARD = "two-card";
+  var TWO_CARD_RULES = ["without-replacement", "independent"];
+  var OUTCOMES = ["AB", "BA", "AA", "BB"];
+  var RULE_LABELS = {
+    "without-replacement": "\u65E0\u653E\u56DE\u62BD\u6837",
+    independent: "\u4E24\u6B21\u72EC\u7ACB\u62BD\u6837"
+  };
+  var CARD_TEXT_LIMIT = 2e3;
+  function twoCard(data = {}) {
+    const rule = TWO_CARD_RULES.includes(data?.rule) ? data.rule : "without-replacement";
+    const [AB, BA, AA, BB] = rule === "independent" ? [0.25, 0.25, 0.25, 0.25] : [0.5, 0.5, 0, 0];
+    return {
+      type: TWO_CARD,
+      rule,
+      probabilities: { AB, BA, AA, BB },
+      summary: typeof data?.summary === "string" ? data.summary.slice(0, CARD_TEXT_LIMIT) : "",
+      question: typeof data?.question === "string" ? data.question.slice(0, CARD_TEXT_LIMIT) : ""
+    };
+  }
+  function twoCardMarkdown(data, translate2 = (text3) => text3) {
+    const card = twoCard(data);
+    return [
+      "### " + translate2("\u4E24\u5F20\u5361\u7247"),
+      translate2("\u62BD\u6837\u89C4\u5219") + " \xB7 " + translate2(RULE_LABELS[card.rule]),
+      [
+        "| " + translate2("\u7ED3\u679C") + " | " + translate2("\u6982\u7387") + " |",
+        "| --- | --- |",
+        ...OUTCOMES.map((outcome) => "| " + outcome + " | " + card.probabilities[outcome] * 100 + "% |")
+      ].join("\n"),
+      card.summary.trim() && "**" + translate2("\u6211\u7684\u603B\u7ED3") + "**\n\n" + card.summary,
+      card.question.trim() && "**" + translate2("\u6211\u7684\u7591\u95EE") + "**\n\n" + card.question
+    ].filter(Boolean).join("\n\n");
   }
 
   // node_modules/katex/dist/katex.mjs
@@ -19040,6 +19090,7 @@
   }
 
   // lib/paper-html.js
+  var figureLanguage = "language-" + NOTE_FIGURE_FENCE;
   var ALLOWED_ELEMENTS = /* @__PURE__ */ new Set([
     "A",
     "B",
@@ -19131,6 +19182,9 @@
         safeNode.setAttribute("aria-label", t("\u5F85\u529E\u72B6\u6001"));
       }
       if (tag === "OL" && node.hasAttribute("start")) safeNode.start = node.start;
+      if (tag === "CODE" && node.parentElement?.tagName === "PRE" && node.classList.contains(figureLanguage)) {
+        safeNode.className = figureLanguage;
+      }
       for (const child of node.childNodes) append(child, safeNode);
       target.append(safeNode);
     }
@@ -19203,9 +19257,10 @@ ${children(node).trim().split("\n").map((line) => `> ${line}`).join("\n")}
         case "PRE": {
           const code3 = node.textContent.replace(/\n$/, "");
           const fence2 = codeFence(code3, 3);
+          const language2 = node.firstElementChild?.classList.contains(figureLanguage) ? NOTE_FIGURE_FENCE : "";
           return `
 
-${fence2}
+${fence2}${language2}
 ${code3}
 ${fence2}
 
@@ -19448,11 +19503,11 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     }
     throw new Error(t("\u6B64 DSH \u7248\u672C\u6CA1\u6709\u8FD4\u56DE\u53EF\u7528\u7684\u7F51\u9875\u622A\u56FE\u3002"));
   }
-  function button(document2, caption, act) {
+  function button(document2, caption2, act) {
     const item = document2.createElement("button");
     item.type = "button";
     item.setAttribute("role", "menuitem");
-    item.textContent = caption;
+    item.textContent = caption2;
     Object.assign(item.style, {
       display: "block",
       border: "none",
@@ -19511,10 +19566,10 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     overlay.append(help, box);
     document2.body.append(overlay);
     overlay.focus({ preventScroll: true });
-    const controls = new view.AbortController();
-    const options = { signal: controls.signal };
+    const controls2 = new view.AbortController();
+    const options = { signal: controls2.signal };
     function close2() {
-      controls.abort();
+      controls2.abort();
       overlay.remove();
     }
     let start;
@@ -19558,13 +19613,13 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       if (region.right - region.left >= 3 && region.bottom - region.top >= 3) onRegion(region);
     }, options);
     overlay.addEventListener("pointercancel", onDismiss, options);
-    document2.addEventListener("scroll", onDismiss, { capture: true, signal: controls.signal });
+    document2.addEventListener("scroll", onDismiss, { capture: true, signal: controls2.signal });
     document2.addEventListener("keydown", (event) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopPropagation();
       onDismiss();
-    }, { capture: true, signal: controls.signal });
+    }, { capture: true, signal: controls2.signal });
     view.addEventListener("resize", onDismiss, options);
     view.addEventListener("blur", onDismiss, options);
     return close2;
@@ -19616,8 +19671,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         border: "1px solid color-mix(in srgb, CanvasText 18%, Canvas)",
         borderRadius: "8px"
       });
-      const controls = new view.AbortController();
-      const options = { signal: controls.signal };
+      const controls2 = new view.AbortController();
+      const options = { signal: controls2.signal };
       function run(operation, action) {
         dismiss();
         Promise.resolve().then(() => {
@@ -19653,7 +19708,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       menu.style.left = Math.max(4, Math.min(position.x, view.innerWidth - menu.offsetWidth - 4)) + "px";
       menu.style.top = Math.max(4, Math.min(position.y, view.innerHeight - menu.offsetHeight - 4)) + "px";
       dismiss = () => {
-        controls.abort();
+        controls2.abort();
         menu.remove();
       };
       document2.addEventListener("pointerdown", (event) => {
@@ -20167,10 +20222,10 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     }
     return Object.fromEntries(values2);
   }
-  function records(items) {
-    if (!Array.isArray(items)) return null;
+  function records(items2) {
+    if (!Array.isArray(items2)) return null;
     const found = /* @__PURE__ */ new Map();
-    for (const row of items) {
+    for (const row of items2) {
       if (typeof row?.id !== "string" || !row.id || found.has(row.id)) return null;
       found.set(row.id, row);
     }
@@ -20202,7 +20257,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     const merged = mergeRecords(base3, local, remote);
     if (merged === conflict) return conflict;
     const existing = new Set((base3 ?? []).map((block2) => block2.id));
-    const newItems = (items) => items.filter((block2) => !existing.has(block2.id));
+    const newItems = (items2) => items2.filter((block2) => !existing.has(block2.id));
     const incoming = newItems(remote);
     return newItems(local).some((block2) => incoming.some((item) => block2.id !== item.id && boxesOverlap(block2, item))) ? conflict : merged;
   }
@@ -20391,42 +20446,6 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       restore,
       send
     };
-  }
-
-  // lib/note-components.js
-  var NOTE_LAYOUTS = ["auto", "comparison", "steps", "checklist"];
-  var TWO_CARD = "two-card";
-  var TWO_CARD_RULES = ["without-replacement", "independent"];
-  var OUTCOMES = ["AB", "BA", "AA", "BB"];
-  var RULE_LABELS = {
-    "without-replacement": "\u65E0\u653E\u56DE\u62BD\u6837",
-    independent: "\u4E24\u6B21\u72EC\u7ACB\u62BD\u6837"
-  };
-  var CARD_TEXT_LIMIT = 2e3;
-  function twoCard(data = {}) {
-    const rule = TWO_CARD_RULES.includes(data?.rule) ? data.rule : "without-replacement";
-    const [AB, BA, AA, BB] = rule === "independent" ? [0.25, 0.25, 0.25, 0.25] : [0.5, 0.5, 0, 0];
-    return {
-      type: TWO_CARD,
-      rule,
-      probabilities: { AB, BA, AA, BB },
-      summary: typeof data?.summary === "string" ? data.summary.slice(0, CARD_TEXT_LIMIT) : "",
-      question: typeof data?.question === "string" ? data.question.slice(0, CARD_TEXT_LIMIT) : ""
-    };
-  }
-  function twoCardMarkdown(data, translate2 = (text3) => text3) {
-    const card = twoCard(data);
-    return [
-      "### " + translate2("\u4E24\u5F20\u5361\u7247"),
-      translate2("\u62BD\u6837\u89C4\u5219") + " \xB7 " + translate2(RULE_LABELS[card.rule]),
-      [
-        "| " + translate2("\u7ED3\u679C") + " | " + translate2("\u6982\u7387") + " |",
-        "| --- | --- |",
-        ...OUTCOMES.map((outcome) => "| " + outcome + " | " + card.probabilities[outcome] * 100 + "% |")
-      ].join("\n"),
-      card.summary.trim() && "**" + translate2("\u6211\u7684\u603B\u7ED3") + "**\n\n" + card.summary,
-      card.question.trim() && "**" + translate2("\u6211\u7684\u7591\u95EE") + "**\n\n" + card.question
-    ].filter(Boolean).join("\n\n");
   }
 
   // node_modules/fflate/esm/browser.js
@@ -21874,9 +21893,9 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
   }
   var XfaText = class _XfaText {
     static textContent(xfa) {
-      const items = [];
+      const items2 = [];
       const output = {
-        items,
+        items: items2,
         styles: /* @__PURE__ */ Object.create(null)
       };
       function walk(node) {
@@ -21895,7 +21914,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
           str = node.value;
         }
         if (str !== null) {
-          items.push({
+          items2.push({
             str
           });
         }
@@ -34833,13 +34852,13 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     get textContentItemsStr() {
       return this.#textContentItemsStr;
     }
-    #processItems(items) {
+    #processItems(items2) {
       if (this.#disableProcessItems) {
         return;
       }
       this.#layoutTextParams.ctx ??= _TextLayer.#getCtx(this.#lang);
       const textDivs = this.#textDivs, textContentItemsStr = this.#textContentItemsStr;
-      for (const item of items) {
+      for (const item of items2) {
         if (textDivs.length > MAX_TEXT_DIVS_TO_RENDER) {
           warn("Ignoring additional textDivs for performance reasons.");
           this.#disableProcessItems = true;
@@ -39016,12 +39035,12 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
             },
             items(event) {
               const {
-                items
+                items: items2
               } = event.detail;
               while (selectElement.length !== 0) {
                 selectElement.remove(0);
               }
-              for (const item of items) {
+              for (const item of items2) {
                 const {
                   displayValue,
                   exportValue
@@ -59287,7 +59306,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         var borderColor = options.borderColor;
         var borderWidth = options.borderWidth;
         var degreesAngle = toDegrees(options.rotate);
-        var caption = options.caption;
+        var caption2 = options.caption;
         var x2 = options.x;
         var y = options.y;
         var width = options.width + borderWidth;
@@ -59305,8 +59324,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
           ac.setBackgroundColor(colorToComponents(backgroundColor));
         }
         ac.setRotation(degreesAngle);
-        if (caption)
-          ac.setCaptions({ normal: caption });
+        if (caption2)
+          ac.setCaptions({ normal: caption2 });
         if (borderColor)
           ac.setBorderColor(colorToComponents(borderColor));
         var bs = widget.getOrCreateBorderStyle();
@@ -68090,7 +68109,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     const rules = make("div", "nl-card-rules");
     rules.setAttribute("role", "group");
     rules.setAttribute("aria-label", t("\u62BD\u6837\u89C4\u5219"));
-    const controls = new Map(TWO_CARD_RULES.map((rule) => {
+    const controls2 = new Map(TWO_CARD_RULES.map((rule) => {
       const control = make("button", "nl-paper-button", t(RULE_LABELS[rule]));
       control.type = "button";
       control.addEventListener("click", () => {
@@ -68119,7 +68138,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     const explanation = make("p", "nl-card-explanation");
     explanation.setAttribute("aria-live", "polite");
     function draw() {
-      for (const [rule, control] of controls) control.setAttribute("aria-pressed", String(card.rule === rule));
+      for (const [rule, control] of controls2) control.setAttribute("aria-pressed", String(card.rule === rule));
       for (const { outcome, fill: fill2, amount } of rows) {
         const percent = card.probabilities[outcome] * 100 + "%";
         fill2.style.width = percent;
@@ -68127,7 +68146,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       }
       explanation.textContent = card.rule === "independent" ? t("\u6BCF\u79CD\u7ED3\u679C\u90FD\u662F 25%\u3002AA \u548C BB \u5408\u8BA1\u5360\u4E00\u534A\u3002") : t("\u53EA\u6709 AB \u548C BA\uFF0C\u6982\u7387\u5404\u4E3A 50%\u3002");
     }
-    function field(key, caption) {
+    function field(key, caption2) {
       const label3 = make("label", "nl-card-field");
       const input = make("textarea");
       input.rows = 2;
@@ -68138,7 +68157,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         onChange(card, true);
       }, listener);
       input.addEventListener("blur", onFinish, listener);
-      label3.append(make("span", "", t(caption)), input);
+      label3.append(make("span", "", t(caption2)), input);
       return label3;
     }
     draw();
@@ -68158,6 +68177,168 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       root.append(ask);
     }
     return root;
+  }
+
+  // lib/paper-figure.js
+  function caption(value, limit) {
+    if (typeof value !== "string") return null;
+    const text3 = value.trim();
+    return text3 && text3.length <= limit ? text3 : null;
+  }
+  function items(value, min, max, read) {
+    if (!Array.isArray(value) || value.length < min || value.length > max) return null;
+    const result = value.map(read);
+    return result.includes(null) ? null : result;
+  }
+  function parseFigure(source) {
+    if (source.length > 12e3) return null;
+    let input;
+    try {
+      input = JSON.parse(source);
+    } catch {
+      return null;
+    }
+    const title = caption(input?.title, 100);
+    if (!title) return null;
+    if (input.type === "flow") {
+      const steps2 = items(input.steps, 2, 8, (step) => {
+        const label3 = caption(step?.label, 64);
+        const explanation = caption(step?.explanation, 480);
+        return label3 && explanation ? { label: label3, explanation } : null;
+      });
+      return steps2 && { type: "flow", title, steps: steps2 };
+    }
+    if (input.type !== "bar") return null;
+    const labels = items(input.labels, 1, 8, (label3) => caption(label3, 48));
+    const unit = input.unit === void 0 ? "" : caption(input.unit, 16);
+    if (!labels || unit === null) return null;
+    const scenarios = items(input.scenarios, 1, 4, (entry) => {
+      const label3 = caption(entry?.label, 64);
+      const explanation = entry?.explanation === void 0 ? "" : caption(entry.explanation, 480);
+      const values2 = items(entry?.values, labels.length, labels.length, (value) => Number.isFinite(value) && value >= 0 ? value : null);
+      return label3 && values2 && explanation !== null ? { label: label3, values: values2, explanation } : null;
+    });
+    if (!scenarios) return null;
+    const highest = Math.max(...scenarios.flatMap((scenario) => scenario.values));
+    const max = input.max ?? (highest || 1);
+    if (!Number.isFinite(max) || max <= 0 || max < highest) return null;
+    return { type: "bar", title, labels, scenarios, unit, max };
+  }
+  function create(doc, tag, className, label3) {
+    const node = doc.createElement(tag);
+    if (className) node.className = className;
+    if (label3 !== void 0) node.textContent = label3;
+    return node;
+  }
+  function controls(doc, options, label3, select, flow = false) {
+    const group = create(doc, "div", "nl-figure-controls");
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-label", label3);
+    const buttons = options.map((option, index) => {
+      const button3 = create(doc, "button", "nl-paper-button nl-figure-control", option.label);
+      button3.type = "button";
+      const item = create(doc, "span", "nl-figure-option");
+      if (flow && index > 0) {
+        const arrow = create(doc, "span", "nl-figure-arrow", "\u2192");
+        arrow.setAttribute("aria-hidden", "true");
+        item.append(arrow);
+      }
+      item.append(button3);
+      group.append(item);
+      button3.addEventListener("click", () => choose(index));
+      return button3;
+    });
+    function choose(index) {
+      buttons.forEach((button3, position) => button3.setAttribute("aria-pressed", String(position === index)));
+      select(options[index]);
+    }
+    choose(0);
+    return group;
+  }
+  function flowFigure(root, figure) {
+    const doc = root.ownerDocument;
+    const detail = create(doc, "div", "nl-figure-detail");
+    detail.setAttribute("aria-live", "polite");
+    const label3 = create(doc, "strong");
+    const explanation = create(doc, "p");
+    detail.append(label3, explanation);
+    const steps2 = controls(doc, figure.steps, t("\u6D41\u7A0B\u6B65\u9AA4"), (step) => {
+      label3.textContent = step.label;
+      explanation.textContent = step.explanation;
+    }, true);
+    root.append(steps2, detail);
+  }
+  function barFigure(root, figure) {
+    const doc = root.ownerDocument;
+    const graph = create(doc, "div", "nl-card-graph nl-figure-graph");
+    const format2 = (value) => String(value) + (figure.unit === "%" ? "%" : figure.unit ? " " + figure.unit : "");
+    const scale2 = create(doc, "p", "nl-figure-scale", t("\u5171\u540C\u523B\u5EA6 0\u2013{0}", format2(figure.max)));
+    const detail = create(doc, "p", "nl-figure-detail");
+    detail.setAttribute("aria-live", "polite");
+    const bars = figure.labels.map((label3) => {
+      const row = create(doc, "div", "nl-figure-row");
+      const track = create(doc, "span", "nl-card-track");
+      track.setAttribute("aria-hidden", "true");
+      const fill2 = create(doc, "span", "nl-card-fill");
+      track.append(fill2);
+      const amount = create(doc, "span", "nl-figure-value");
+      row.append(create(doc, "span", "", label3), track, amount);
+      graph.append(row);
+      return { fill: fill2, amount };
+    });
+    const choices = controls(doc, figure.scenarios, t("\u6BD4\u8F83\u6761\u4EF6"), (scenario) => {
+      bars.forEach(({ fill: fill2, amount }, index) => {
+        const value = scenario.values[index];
+        fill2.style.width = value / figure.max * 100 + "%";
+        amount.textContent = format2(value);
+      });
+      detail.textContent = scenario.explanation;
+      detail.hidden = !scenario.explanation;
+    });
+    root.append(choices, scale2, graph, detail);
+  }
+  function mountNoteFigures(preview) {
+    const doc = preview.ownerDocument;
+    for (const code3 of preview.querySelectorAll("pre > code.language-" + NOTE_FIGURE_FENCE)) {
+      const figure = parseFigure(code3.textContent);
+      if (!figure) {
+        code3.parentElement.before(create(doc, "p", "nl-figure-error", t("\u56FE\u793A\u6570\u636E\u6709\u8BEF\uFF0C\u8BF7\u5728 Markdown \u6E90\u7801\u4E2D\u4FEE\u6B63\u3002")));
+        continue;
+      }
+      const root = create(doc, "section", "nl-note-figure");
+      root.setAttribute("aria-label", figure.title);
+      root.append(create(doc, "h3", "", figure.title));
+      if (figure.type === "flow") flowFigure(root, figure);
+      else barFigure(root, figure);
+      code3.parentElement.replaceWith(root);
+    }
+  }
+  function sampleFigureMarkdown(type) {
+    const figure = type === "flow" ? {
+      type,
+      title: t("\u4E24\u6B21\u62BD\u6837\u7684\u8FC7\u7A0B"),
+      steps: [
+        { label: t("\u7B2C\u4E00\u6B21\u62BD\u53D6"), explanation: t("\u7B49\u6982\u7387\u62BD\u5230 A \u6216 B\u3002") },
+        { label: t("\u5E94\u7528\u62BD\u6837\u89C4\u5219"), explanation: t("\u6709\u653E\u56DE\u65F6\uFF0C\u7B2C\u4E8C\u6B21\u4ECD\u7136\u53EF\u4EE5\u62BD\u5230\u540C\u4E00\u5F20\u5361\u7247\u3002") },
+        { label: t("\u7B2C\u4E8C\u6B21\u62BD\u53D6"), explanation: t("\u7528\u4E58\u6CD5\u6CD5\u5219\u8BA1\u7B97\u4E24\u6B21\u62BD\u53D6\u7ED3\u679C\u7684\u8054\u5408\u6982\u7387\u3002") }
+      ]
+    } : {
+      type,
+      title: t("\u56DB\u79CD\u7ED3\u679C\u7684\u6982\u7387"),
+      labels: OUTCOMES,
+      unit: "%",
+      max: 100,
+      scenarios: TWO_CARD_RULES.map((rule) => {
+        const { probabilities } = twoCard({ rule });
+        return {
+          label: t(RULE_LABELS[rule]),
+          values: OUTCOMES.map((outcome) => probabilities[outcome] * 100),
+          explanation: rule === "independent" ? t("\u6BCF\u79CD\u7ED3\u679C\u90FD\u662F 25%\u3002AA \u548C BB \u5408\u8BA1\u5360\u4E00\u534A\u3002") : t("\u53EA\u6709 AB \u548C BA\uFF0C\u6982\u7387\u5404\u4E3A 50%\u3002")
+        };
+      })
+    };
+    const fields = Object.entries(figure).map(([key, value]) => "  " + JSON.stringify(key) + ": " + JSON.stringify(value));
+    return ["```" + NOTE_FIGURE_FENCE, "{", fields.join(",\n"), "}", "```"].join("\n");
   }
 
   // lib/paper-flow.js
@@ -68213,7 +68394,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
   function mathRule(display) {
     return (tokens, index, _options, env) => {
       const { content } = tokens[index];
-      if (!env.noteLayout) return renderMath(content, display);
+      if (!env.mathSource) return renderMath(content, display);
       const latex = markdown.utils.escapeHtml(content);
       return display ? "<div>$$\n" + latex + "\n$$</div>" : "\\(" + latex + "\\)";
     };
@@ -68247,8 +68428,11 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     state.line = line + 1;
     return true;
   }, { alt: ["paragraph", "reference", "blockquote"] });
-  function renderPaperMarkdown(source) {
-    return markdown.render(source);
+  function hasPaperFigures(source) {
+    return source.includes(NOTE_FIGURE_FENCE) && markdown.parse(source, {}).some((token) => token.type === "fence" && token.info.trim().split(/\s+/, 1)[0] === NOTE_FIGURE_FENCE);
+  }
+  function renderPaperMarkdown(source, layout) {
+    return markdown.render(source, { noteLayout: layout });
   }
   var comparisons = /对比|比较|异同|区别|差异|\bcompare\b|\bcomparison\b|\bversus\b/i;
   var taskLists = /待办|任务清单|行动清单|\bchecklist\b|\bto-?do\b/i;
@@ -68256,13 +68440,13 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
   var taskMarker = /^\[([ xX])\][ \t]+/;
   var shortItem = ["list_item_open", "paragraph_open", "inline", "paragraph_close", "list_item_close"];
   function simpleList(tokens, start) {
-    const items = [];
+    const items2 = [];
     let end = start + 1;
     while (shortItem.every((type, index) => tokens[end + index]?.type === type)) {
-      items.push(tokens[end + 2]);
+      items2.push(tokens[end + 2]);
       end += shortItem.length;
     }
-    return items.length && /_list_close$/.test(tokens[end]?.type) ? { items, end } : null;
+    return items2.length && /_list_close$/.test(tokens[end]?.type) ? { items: items2, end } : null;
   }
   function comparisonRow(item) {
     const match = /^([^:：\n]{1,52})[:：]\s*(\S[\s\S]*)$/.exec(item.content.trim());
@@ -68318,7 +68502,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     return "<table><thead><tr>" + headings + "</tr></thead><tbody>" + rows.join("") + "</tbody></table>\n";
   };
   function renderPaperLayout(source, layout) {
-    return markdown.render(source, { noteLayout: layout });
+    return markdown.render(source, { noteLayout: layout, mathSource: true });
   }
 
   // lib/paper.js
@@ -68878,8 +69062,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         const item = element3(doc, "article", "nl-paper-block");
         item.dataset.kind = block2.kind;
         item.dataset.id = block2.id;
-        const structured = NOTE_LAYOUTS.includes(block2.layout);
-        if (block2.kind !== "text" || !structured && typeof block2.markdown === "string") item.tabIndex = 0;
+        const markdownPreview = block2.kind === "text" && typeof block2.markdown === "string" && (!NOTE_LAYOUTS.includes(block2.layout) || hasPaperFigures(block2.markdown));
+        if (block2.kind !== "text" || markdownPreview) item.tabIndex = 0;
         position(item, block2);
         const move = element3(doc, "button", "nl-paper-move", "\u283F");
         move.type = "button";
@@ -68887,7 +69071,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         move.dataset.move = "";
         move.addEventListener("keydown", (event) => nudge(event, block2.id), listener);
         item.append(move);
-        if (block2.kind === "text" && !structured && typeof block2.markdown === "string") {
+        if (markdownPreview) {
           renderMarkdownBlock(item, block2);
         } else if (block2.kind === "text") {
           renderTextBlock(item, block2);
@@ -69100,7 +69284,9 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       editor.spellcheck = false;
       editor.value = block2.markdown;
       function updatePreview() {
-        preview.innerHTML = renderPaperMarkdown(editor.value);
+        const layout = NOTE_LAYOUTS.includes(block2.layout) ? block2.layout : void 0;
+        preview.innerHTML = renderPaperMarkdown(editor.value, layout);
+        mountNoteFigures(preview);
       }
       function saveMarkdown() {
         const old = page.blocks.find((candidate) => candidate.id === block2.id);
@@ -69127,7 +69313,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         else if (fitContent()) resize();
       }, listener);
       preview.addEventListener("dblclick", (event) => {
-        if (!event.target.closest?.("a")) toggle.click();
+        if (!event.target.closest?.("a, .nl-note-figure")) toggle.click();
       }, listener);
       editor.addEventListener("input", saveMarkdown, listener);
       editor.addEventListener("blur", () => {
@@ -69282,10 +69468,10 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       anchor.download = block2.name || t("\u9644\u4EF6");
       anchor.click();
     }
-    async function insert(items, point) {
+    async function insert(items2, point) {
       if (destroyed) return [];
       const targetPageId = page.id;
-      const materials = Array.isArray(items) ? items : [items];
+      const materials = Array.isArray(items2) ? items2 : [items2];
       const last2 = page.blocks.at(-1);
       const explicitLanding = point ?? nextInsertion;
       const bottom = page.blocks.reduce((max, block2) => {
@@ -69396,7 +69582,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         return;
       }
       if (mode === "text") {
-        if (!event.target.closest("[data-editor], .nl-two-card, .nl-note-original")) addText(point);
+        if (!event.target.closest("[data-editor], .nl-two-card, .nl-note-original, .nl-note-figure")) addText(point);
         return;
       }
       currentId = null;
@@ -69627,8 +69813,18 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
         }
       }
     }
+    function paintBackground(ctx, node, origin, bounds) {
+      const rect = lineRect(node.getBoundingClientRect(), origin, scale2);
+      if (!intersects(rect, bounds)) return null;
+      ctx.fillStyle = win.getComputedStyle(node).backgroundColor;
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+      return rect;
+    }
     function renderText(ctx, node, origin, bounds) {
       if (!node) return;
+      for (const part of node.querySelectorAll(".nl-note-figure, .nl-figure-control, .nl-figure-detail, .nl-figure-graph .nl-card-track, .nl-figure-graph .nl-card-fill")) {
+        paintBackground(ctx, part, origin, bounds);
+      }
       for (const cell of node.querySelectorAll('td, th, input[type="checkbox"]')) {
         const rect = lineRect(cell.getBoundingClientRect(), origin, scale2);
         if (!intersects(rect, bounds)) continue;
@@ -69676,12 +69872,9 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     function renderCardCanvas(ctx, node, origin, bounds) {
       if (!node) return;
       for (const part of [node, ...node.querySelectorAll(".nl-card-track, .nl-card-fill, textarea")]) {
-        const rect = lineRect(part.getBoundingClientRect(), origin, scale2);
-        if (!intersects(rect, bounds)) continue;
+        const rect = paintBackground(ctx, part, origin, bounds);
+        if (!rect || part.tagName !== "TEXTAREA") continue;
         const style = win.getComputedStyle(part);
-        ctx.fillStyle = style.backgroundColor;
-        ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-        if (part.tagName !== "TEXTAREA") continue;
         ctx.save();
         ctx.beginPath();
         ctx.rect(rect.x, rect.y, rect.width, rect.height);
@@ -70466,6 +70659,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       if (mountedPage === page.id && !force) return;
       const actions = [
         [t("\u63D2\u5165\u4E24\u5F20\u5361\u7247"), () => paper.insert({ kind: "card", card: twoCard() })],
+        [t("\u63D2\u5165\u53EF\u70B9\u51FB\u6D41\u7A0B\u56FE"), () => paper.insert({ kind: "text", layout: "auto", markdown: sampleFigureMarkdown("flow") })],
+        [t("\u63D2\u5165\u4EA4\u4E92\u6761\u5F62\u56FE"), () => paper.insert({ kind: "text", layout: "auto", markdown: sampleFigureMarkdown("bar") })],
         [t("\u91CD\u547D\u540D"), () => rename("pages", page)],
         [t("\u65B0\u5EFA\u5B50\u9875"), () => addPage(page.id)],
         [t("\u79FB\u52A8\u5230\u5206\u533A"), () => changePageLocation(page, false)],
@@ -70559,13 +70754,13 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
       languagePicker.disabled = importing || applying || Boolean(update.locked);
       const text3 = busy || (update.locked ? t("\u6B63\u5728\u6062\u590D\u2026") : update.pending ? t("\u5F85\u4FDD\u5B58") : library.data ? t("\u672C\u5730\u4FDD\u5B58") : t("\u6B63\u5728\u8F7D\u5165\u2026"));
       status.dataset.state = error3 ? "error" : busy || update.locked || !library.data ? "busy" : update.pending ? "pending" : "saved";
-      const items = [element2("span", { className: "ntl-status-label" }, text3)];
-      if (error3) items.push(element2("span", { className: "ntl-error" }, error3.message));
-      if (error3?.status === 409) items.push(button2(t("\u4E0B\u8F7D\u672C\u7A97\u53E3\u526F\u672C"), run(exportBackup)), button2(t("\u91CD\u8F7D"), run(async () => {
+      const items2 = [element2("span", { className: "ntl-status-label" }, text3)];
+      if (error3) items2.push(element2("span", { className: "ntl-error" }, error3.message));
+      if (error3?.status === 409) items2.push(button2(t("\u4E0B\u8F7D\u672C\u7A97\u53E3\u526F\u672C"), run(exportBackup)), button2(t("\u91CD\u8F7D"), run(async () => {
         if (await confirmDialog(t("\u91CD\u65B0\u8F7D\u5165"), t("\u91CD\u8F7D\u4F1A\u7528\u78C1\u76D8\u4E0A\u7684\u7248\u672C\u66FF\u6362\u672C\u7A97\u53E3\u5C1A\u672A\u4FDD\u5B58\u7684\u7F16\u8F91\u3002"), t("\u91CD\u8F7D"))) await library.load(true);
       })));
-      else if (error3) items.push(button2(t("\u91CD\u8BD5"), run(() => library.data ? library.save() : library.load(true))));
-      status.replaceChildren(...items);
+      else if (error3) items2.push(button2(t("\u91CD\u8BD5"), run(() => library.data ? library.save() : library.load(true))));
+      status.replaceChildren(...items2);
     }
     function updatePlacement() {
       placement.hidden = !selected() || !getPending().length;
@@ -70707,7 +70902,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
   }
 
   // lib/paper.css
-  var paper_default = '.nl-paper {\n  --nl-paper-ink: #26394f;\n  --nl-paper-page: #fffef9;\n  --nl-paper-faint: #e0e7ef;\n  --nl-paper-blue: #245fa2;\n  --nl-paper-mat: var(--ntl-mat, #edf1f5);\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  background: var(--nl-paper-mat);\n  color: var(--ntl-ink, var(--nl-paper-ink));\n  font: 13px/1.45 var(--ntl-font, system-ui, "Microsoft YaHei", sans-serif);\n}\n\n.nl-paper *, .nl-paper *::before, .nl-paper *::after { box-sizing: border-box; }\n.nl-paper [hidden] { display: none; }\n\n.nl-paper-toolbar, .nl-paper-format, .nl-paper-pen, .nl-paper-link-form {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 3px 7px;\n  padding: 5px 9px;\n  background: var(--ntl-surface, #fff);\n  border-bottom: 1px solid var(--ntl-line, var(--nl-paper-faint));\n}\n\n.nl-paper-toolbar { position: relative; z-index: 5; justify-content: space-between; }\n.nl-paper-format, .nl-paper-pen, .nl-paper-link-form { background: var(--ntl-rail, #f8fafc); }\n\n.nl-paper-tools, .nl-paper-actions, .nl-paper-zoom {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 2px;\n  min-width: 0;\n}\n\n.nl-paper-toolbar .nl-paper-shapes > summary,\n.nl-paper-button {\n  min-width: 27px;\n  min-height: 28px;\n  padding: 3px 5px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: inherit;\n  cursor: pointer;\n  font: inherit;\n  font-size: 12px;\n  white-space: nowrap;\n}\n\n.nl-paper-button:hover {\n  background: var(--ntl-hover, #edf3fb);\n}\n\n.nl-paper-shapes[open] > summary,\n.nl-paper-shapes > summary[data-active="true"],\n.nl-paper-button:is([aria-pressed="true"], [aria-expanded="true"]) {\n  background: var(--ntl-tint, #e7f1fe);\n  color: var(--ntl-ink, var(--nl-paper-blue));\n  font-weight: 600;\n}\n\n.nl-paper-shapes > summary::after { width: 5px; height: 5px; }\n.nl-paper-shapes .ntl-menu-items { min-width: 94px; }\n\n.nl-paper-history { font-size: 16px; line-height: 1; }\n\n.nl-paper-delete {\n  position: relative;\n  display: inline-grid;\n  place-items: center;\n}\n\n.nl-paper-delete::before {\n  width: 9px;\n  height: 10px;\n  margin-top: 3px;\n  border: 1px solid currentColor;\n  border-radius: 0 0 2px 2px;\n  content: "";\n}\n\n.nl-paper-delete::after {\n  position: absolute;\n  inset-block-start: 7px;\n  width: 12px;\n  height: 1px;\n  background: currentColor;\n  content: "";\n}\n\n.nl-paper-ask:not(:disabled) {\n  padding-inline: 7px;\n  background: var(--ntl-fill, #245fa2);\n  color: var(--ntl-on-accent, #fff);\n  font-weight: 600;\n}\n\n.nl-paper-ask:not(:disabled):hover { background: var(--ntl-fill-hover, #184d92); }\n\n.nl-paper-button:disabled { opacity: .46; cursor: default; }\n.nl-paper-button:disabled:hover { background: transparent; }\n\n.nl-paper-button:focus-visible, .nl-paper :is(input, summary, .nl-paper-move, .nl-paper-resize):focus-visible {\n  outline: 2px solid var(--ntl-accent, var(--nl-paper-blue));\n  outline-offset: 1px;\n}\n\n.nl-paper-color {\n  width: 24px;\n  height: 24px;\n  padding: 2px;\n  border: 1px solid var(--ntl-line, var(--nl-paper-faint));\n  border-radius: 5px;\n  background: var(--ntl-surface, #fff);\n}\n\n.nl-paper-size { width: 50px; accent-color: var(--ntl-accent, var(--nl-paper-blue)); }\n\n.nl-paper-link-form input {\n  min-width: 0;\n  color: inherit;\n  background: var(--ntl-surface, #fff);\n  border: 1px solid var(--ntl-line, var(--nl-paper-faint));\n  border-radius: 5px;\n  padding: 5px 7px;\n  font: inherit;\n}\n\n.nl-paper-viewport {\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow: auto;\n  overscroll-behavior: contain;\n  padding: 18px;\n}\n\n.nl-paper-sheet-frame {\n  position: relative;\n  margin-inline: auto;\n  overflow: hidden;\n  box-shadow: 0 0 0 1px #5a6a8126, 0 3px 10px #23344e14;\n}\n\n@container (max-width: 450px) {\n  .nl-paper-toolbar { padding-inline: 5px; gap: 2px 6px; }\n  .nl-paper-viewport { padding: 11px; }\n}\n.nl-paper-sheet {\n  position: relative;\n  isolation: isolate;\n  transform-origin: top left;\n  background: var(--nl-paper-page);\n  color: var(--nl-paper-ink);\n  overflow: hidden;\n}\n.nl-paper-sheet[data-tool="text"] { cursor: text; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) {\n  cursor: crosshair;\n  touch-action: none;\n  user-select: none;\n}\n.nl-paper-background, .nl-paper-ink, .nl-paper-objects, .nl-paper-selection {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n}\n.nl-paper-background {\n  object-fit: fill;\n  pointer-events: none;\n  user-select: none;\n}\n.nl-paper-ink, .nl-paper-selection { pointer-events: none; }\n.nl-paper-objects { z-index: 1; }\n.nl-paper-ink { z-index: 2; }\n.nl-paper-selection { z-index: 3; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-objects { pointer-events: none; }\n.nl-paper-block {\n  position: absolute;\n  border: 1px solid transparent;\n  min-width: 0;\n  color: var(--nl-paper-ink);\n}\n.nl-paper-block:is(:hover, :focus-within, .is-selected) { border-color: #94b3d9; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-block { border-color: transparent; }\n.nl-paper-edit {\n  outline: none;\n  min-height: 38px;\n  padding: 6px 8px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  overflow-x: auto;\n  font: 18px/1.5 system-ui, "Microsoft YaHei", sans-serif;\n}\n.nl-paper-edit h2, .nl-paper-edit h3 { margin-block: 0.25em; font-weight: 700; line-height: 1.25; }\n.nl-paper-edit h2 { font-size: 1.35em; }\n.nl-paper-edit h3 { font-size: 1.15em; }\n.nl-paper-edit p { margin-block: 0.2em; }\n.nl-paper-edit ol, .nl-paper-edit ul { margin-block: 0.2em; padding-left: 1.45em; }\n.nl-paper-edit ol { list-style: decimal outside; }\n.nl-paper-edit ul { list-style: disc outside; }\n.nl-paper-edit a, .nl-paper-reference:is(a, button) { color: var(--nl-paper-blue); text-decoration: underline; }\n.nl-paper-edit table { border-collapse: collapse; max-width: 100%; }\n.nl-paper-edit th, .nl-paper-edit td {\n  min-width: 5em;\n  overflow-wrap: break-word;\n  padding: 3px 7px;\n  border: 1px solid #a2b4c7;\n}\n.nl-paper-edit th { font-weight: 700; }\n.nl-paper-edit input[type="checkbox"] { accent-color: var(--nl-paper-blue); cursor: pointer; }\n.nl-note-original {\n  padding: 4px 8px;\n  color: #526174;\n  font-size: 14px;\n}\n.nl-note-original summary { cursor: pointer; }\n.nl-note-original p {\n  max-height: 11em;\n  margin: .35em 0 0;\n  overflow: auto;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n}\n.nl-two-card {\n  display: grid;\n  gap: 8px;\n  padding: 13px 15px;\n  border: 1px solid #c8d7e5;\n  border-radius: 8px;\n  background: #f7fafd;\n  color: var(--nl-paper-ink);\n  font-size: 18px;\n}\n.nl-two-card h3 { margin: 0; font-size: 1.18em; }\n.nl-two-card p { margin: 0; }\n.nl-card-description, .nl-card-explanation { color: #526174; font-size: .9em; }\n.nl-card-rules { display: flex; gap: 5px; flex-wrap: wrap; }\n.nl-two-card .nl-paper-button { font-size: .9em; border-color: #c8d7e5; }\n.nl-two-card .nl-paper-button[aria-pressed="true"] { background: #dceaf9; color: #173e70; }\n.nl-card-graph { display: grid; gap: 4px; font-variant-numeric: tabular-nums; }\n.nl-card-row { display: grid; grid-template-columns: 2em minmax(0, 1fr) 3em; gap: 8px; align-items: center; }\n.nl-card-percent { text-align: end; }\n.nl-card-track { display: block; height: .56em; border-radius: 4px; background: #e0e8f0; }\n.nl-card-fill { display: block; height: 100%; border-radius: inherit; background: #346bab; }\n.nl-card-field { display: grid; gap: 3px; font-size: .9em; font-weight: 600; }\n.nl-card-field textarea {\n  width: 100%;\n  min-width: 0;\n  padding: 3px 6px;\n  border: 1px solid #c8d7e5;\n  border-radius: 4px;\n  background: #fff;\n  color: inherit;\n  font: inherit;\n  font-weight: 400;\n  resize: vertical;\n}\n.nl-card-ask { justify-self: start; }\n.nl-paper-formula {\n  display: inline-block;\n  max-width: 100%;\n  vertical-align: baseline;\n  border-radius: 3px;\n  cursor: text;\n}\n.nl-paper-formula[data-display="block"] {\n  display: block;\n  margin-block: .35em;\n  overflow: auto;\n}\n.nl-paper-formula:has(math):hover { background: #edf4fd; }\n.nl-paper-formula:focus-visible {\n  outline: 2px solid var(--nl-paper-blue);\n  outline-offset: 2px;\n}\n.nl-paper-formula-source {\n  display: inline-block;\n  width: min(20em, 100%);\n  min-width: 5em;\n  max-width: 100%;\n  padding: 2px 4px;\n  border: 1px solid #94b3d9;\n  border-radius: 4px;\n  background: #f4f8fd;\n  color: var(--nl-paper-ink);\n  resize: none;\n  vertical-align: middle;\n  font: 15px/1.4 Consolas, monospace;\n}\n.nl-paper-formula[data-display="block"] .nl-paper-formula-source {\n  display: block;\n  width: 100%;\n  resize: vertical;\n}\n.nl-paper-markdown-toggle {\n  display: block;\n  margin: 2px 4px 0 auto;\n  padding: 2px 6px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: var(--nl-paper-blue);\n  font: inherit;\n  cursor: pointer;\n}\n.nl-paper-markdown-toggle:focus-visible, .nl-paper-markdown-toggle:hover { background: #e7f1fe; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-markdown-toggle {\n  visibility: hidden;\n}\n.nl-paper-markdown-source {\n  width: 100%;\n  min-height: 122px;\n  display: block;\n  resize: vertical;\n  padding: 6px 8px;\n  color: var(--nl-paper-ink);\n  background: #f4f8fd;\n  border: 0;\n  outline: 0;\n  font: 16px/1.5 Consolas, monospace;\n}\n.nl-paper-markdown-preview { white-space: normal; }\n.nl-paper-markdown-preview math[display="block"] {\n  margin-block: .45em;\n  overflow-x: auto;\n  max-width: 100%;\n}\n.nl-paper-edit pre {\n  padding: 5px 7px;\n  background: #eef3f8;\n  white-space: pre-wrap;\n}\n.nl-paper-move, .nl-paper-resize {\n  position: absolute;\n  display: none;\n  color: var(--nl-paper-blue);\n  background: #eff6ff;\n  border: 1px solid #94b3d9;\n  z-index: 4;\n  padding: 0;\n  touch-action: none;\n}\n.nl-paper-move {\n  left: -1px;\n  top: -22px;\n  height: 22px;\n  min-width: 26px;\n  border-radius: 4px 4px 0 0;\n  cursor: grab;\n}\n.nl-paper-resize {\n  right: -3px;\n  bottom: -3px;\n  width: 13px;\n  height: 13px;\n  border-radius: 3px;\n  cursor: nwse-resize;\n}\n.nl-paper-sheet[data-tool="select"] .nl-paper-block:is(.is-selected, :hover, :focus-within) :is(.nl-paper-move, .nl-paper-resize) {\n  display: block;\n}\n.nl-paper-object-image { display: block; width: 100%; object-fit: fill; user-select: none; }\n.nl-paper-file {\n  appearance: none;\n  display: block;\n  max-width: 100%;\n  margin: 4px;\n  padding: 5px 9px;\n  border: 1px solid var(--nl-paper-faint);\n  border-radius: 6px;\n  color: var(--nl-paper-blue);\n  background: #f4f7ff;\n  font: 15px/1.4 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n  cursor: pointer;\n}\n.nl-paper-reference {\n  display: block;\n  width: fit-content;\n  max-width: 100%;\n  margin: 1px 8px 4px;\n  color: #526b84;\n  font: 13px/1.35 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n}\n.nl-paper-reference:is(button) {\n  padding: 0;\n  border: 0;\n  background: transparent;\n  text-align: start;\n  cursor: pointer;\n}\n.nl-paper-live:not(:empty) {\n  margin: 0;\n  padding: 5px 9px;\n  color: var(--ntl-muted, #45617f);\n  background: var(--ntl-rail, #f8fafc);\n  border-top: 1px solid var(--ntl-line, var(--nl-paper-faint));\n}\n.nl-paper-live:empty { display: none; }\n';
+  var paper_default = '.nl-paper {\n  --nl-paper-ink: #26394f;\n  --nl-paper-page: #fffef9;\n  --nl-paper-faint: #e0e7ef;\n  --nl-paper-blue: #245fa2;\n  --nl-paper-mat: var(--ntl-mat, #edf1f5);\n  display: flex;\n  flex-direction: column;\n  width: 100%;\n  height: 100%;\n  min-width: 0;\n  min-height: 0;\n  background: var(--nl-paper-mat);\n  color: var(--ntl-ink, var(--nl-paper-ink));\n  font: 13px/1.45 var(--ntl-font, system-ui, "Microsoft YaHei", sans-serif);\n}\n\n.nl-paper *, .nl-paper *::before, .nl-paper *::after { box-sizing: border-box; }\n.nl-paper [hidden] { display: none; }\n\n.nl-paper-toolbar, .nl-paper-format, .nl-paper-pen, .nl-paper-link-form {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 3px 7px;\n  padding: 5px 9px;\n  background: var(--ntl-surface, #fff);\n  border-bottom: 1px solid var(--ntl-line, var(--nl-paper-faint));\n}\n\n.nl-paper-toolbar { position: relative; z-index: 5; justify-content: space-between; }\n.nl-paper-format, .nl-paper-pen, .nl-paper-link-form { background: var(--ntl-rail, #f8fafc); }\n\n.nl-paper-tools, .nl-paper-actions, .nl-paper-zoom {\n  display: flex;\n  align-items: center;\n  flex-wrap: wrap;\n  gap: 2px;\n  min-width: 0;\n}\n\n.nl-paper-toolbar .nl-paper-shapes > summary,\n.nl-paper-button {\n  min-width: 27px;\n  min-height: 28px;\n  padding: 3px 5px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: inherit;\n  cursor: pointer;\n  font: inherit;\n  font-size: 12px;\n  white-space: nowrap;\n}\n\n.nl-paper-button:hover {\n  background: var(--ntl-hover, #edf3fb);\n}\n\n.nl-paper-shapes[open] > summary,\n.nl-paper-shapes > summary[data-active="true"],\n.nl-paper-button:is([aria-pressed="true"], [aria-expanded="true"]) {\n  background: var(--ntl-tint, #e7f1fe);\n  color: var(--ntl-ink, var(--nl-paper-blue));\n  font-weight: 600;\n}\n\n.nl-paper-shapes > summary::after { width: 5px; height: 5px; }\n.nl-paper-shapes .ntl-menu-items { min-width: 94px; }\n\n.nl-paper-history { font-size: 16px; line-height: 1; }\n\n.nl-paper-delete {\n  position: relative;\n  display: inline-grid;\n  place-items: center;\n}\n\n.nl-paper-delete::before {\n  width: 9px;\n  height: 10px;\n  margin-top: 3px;\n  border: 1px solid currentColor;\n  border-radius: 0 0 2px 2px;\n  content: "";\n}\n\n.nl-paper-delete::after {\n  position: absolute;\n  inset-block-start: 7px;\n  width: 12px;\n  height: 1px;\n  background: currentColor;\n  content: "";\n}\n\n.nl-paper-ask:not(:disabled) {\n  padding-inline: 7px;\n  background: var(--ntl-fill, #245fa2);\n  color: var(--ntl-on-accent, #fff);\n  font-weight: 600;\n}\n\n.nl-paper-ask:not(:disabled):hover { background: var(--ntl-fill-hover, #184d92); }\n\n.nl-paper-button:disabled { opacity: .46; cursor: default; }\n.nl-paper-button:disabled:hover { background: transparent; }\n\n.nl-paper-button:focus-visible, .nl-paper :is(input, summary, .nl-paper-move, .nl-paper-resize):focus-visible {\n  outline: 2px solid var(--ntl-accent, var(--nl-paper-blue));\n  outline-offset: 1px;\n}\n\n.nl-paper-color {\n  width: 24px;\n  height: 24px;\n  padding: 2px;\n  border: 1px solid var(--ntl-line, var(--nl-paper-faint));\n  border-radius: 5px;\n  background: var(--ntl-surface, #fff);\n}\n\n.nl-paper-size { width: 50px; accent-color: var(--ntl-accent, var(--nl-paper-blue)); }\n\n.nl-paper-link-form input {\n  min-width: 0;\n  color: inherit;\n  background: var(--ntl-surface, #fff);\n  border: 1px solid var(--ntl-line, var(--nl-paper-faint));\n  border-radius: 5px;\n  padding: 5px 7px;\n  font: inherit;\n}\n\n.nl-paper-viewport {\n  flex: 1 1 auto;\n  min-height: 0;\n  overflow: auto;\n  overscroll-behavior: contain;\n  padding: 18px;\n}\n\n.nl-paper-sheet-frame {\n  position: relative;\n  margin-inline: auto;\n  overflow: hidden;\n  box-shadow: 0 0 0 1px #5a6a8126, 0 3px 10px #23344e14;\n}\n\n@container (max-width: 450px) {\n  .nl-paper-toolbar { padding-inline: 5px; gap: 2px 6px; }\n  .nl-paper-viewport { padding: 11px; }\n}\n.nl-paper-sheet {\n  position: relative;\n  isolation: isolate;\n  transform-origin: top left;\n  background: var(--nl-paper-page);\n  color: var(--nl-paper-ink);\n  overflow: hidden;\n}\n.nl-paper-sheet[data-tool="text"] { cursor: text; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) {\n  cursor: crosshair;\n  touch-action: none;\n  user-select: none;\n}\n.nl-paper-background, .nl-paper-ink, .nl-paper-objects, .nl-paper-selection {\n  position: absolute;\n  inset: 0;\n  width: 100%;\n  height: 100%;\n}\n.nl-paper-background {\n  object-fit: fill;\n  pointer-events: none;\n  user-select: none;\n}\n.nl-paper-ink, .nl-paper-selection { pointer-events: none; }\n.nl-paper-objects { z-index: 1; }\n.nl-paper-ink { z-index: 2; }\n.nl-paper-selection { z-index: 3; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-objects { pointer-events: none; }\n.nl-paper-block {\n  position: absolute;\n  border: 1px solid transparent;\n  min-width: 0;\n  color: var(--nl-paper-ink);\n}\n.nl-paper-block:is(:hover, :focus-within, .is-selected) { border-color: #94b3d9; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-block { border-color: transparent; }\n.nl-paper-edit {\n  outline: none;\n  min-height: 38px;\n  padding: 6px 8px;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  overflow-x: auto;\n  font: 18px/1.5 system-ui, "Microsoft YaHei", sans-serif;\n}\n.nl-paper-edit h2, .nl-paper-edit h3 { margin-block: 0.25em; font-weight: 700; line-height: 1.25; }\n.nl-paper-edit h2 { font-size: 1.35em; }\n.nl-paper-edit h3 { font-size: 1.15em; }\n.nl-paper-edit p { margin-block: 0.2em; }\n.nl-paper-edit ol, .nl-paper-edit ul { margin-block: 0.2em; padding-left: 1.45em; }\n.nl-paper-edit ol { list-style: decimal outside; }\n.nl-paper-edit ul { list-style: disc outside; }\n.nl-paper-edit a, .nl-paper-reference:is(a, button) { color: var(--nl-paper-blue); text-decoration: underline; }\n.nl-paper-edit table { border-collapse: collapse; max-width: 100%; }\n.nl-paper-edit th, .nl-paper-edit td {\n  min-width: 5em;\n  overflow-wrap: break-word;\n  padding: 3px 7px;\n  border: 1px solid #a2b4c7;\n}\n.nl-paper-edit th { font-weight: 700; }\n.nl-paper-edit input[type="checkbox"] { accent-color: var(--nl-paper-blue); cursor: pointer; }\n.nl-note-original {\n  padding: 4px 8px;\n  color: #526174;\n  font-size: 14px;\n}\n.nl-note-original summary { cursor: pointer; }\n.nl-note-original p {\n  max-height: 11em;\n  margin: .35em 0 0;\n  overflow: auto;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n}\n.nl-two-card {\n  display: grid;\n  gap: 8px;\n  padding: 13px 15px;\n  border: 1px solid #c8d7e5;\n  border-radius: 8px;\n  background: #f7fafd;\n  color: var(--nl-paper-ink);\n  font-size: 18px;\n}\n.nl-two-card h3 { margin: 0; font-size: 1.18em; }\n.nl-two-card p { margin: 0; }\n.nl-card-description, .nl-card-explanation { color: #526174; font-size: .9em; }\n.nl-card-rules { display: flex; gap: 5px; flex-wrap: wrap; }\n.nl-two-card .nl-paper-button { font-size: .9em; border-color: #c8d7e5; }\n.nl-two-card .nl-paper-button[aria-pressed="true"] { background: #dceaf9; color: #173e70; }\n.nl-card-graph { display: grid; gap: 4px; font-variant-numeric: tabular-nums; }\n.nl-card-row { display: grid; grid-template-columns: 2em minmax(0, 1fr) 3em; gap: 8px; align-items: center; }\n.nl-card-percent { text-align: end; }\n.nl-card-track { display: block; height: .56em; border-radius: 4px; background: #e0e8f0; }\n.nl-card-fill { display: block; height: 100%; border-radius: inherit; background: #346bab; }\n.nl-card-field { display: grid; gap: 3px; font-size: .9em; font-weight: 600; }\n.nl-card-field textarea {\n  width: 100%;\n  min-width: 0;\n  padding: 3px 6px;\n  border: 1px solid #c8d7e5;\n  border-radius: 4px;\n  background: #fff;\n  color: inherit;\n  font: inherit;\n  font-weight: 400;\n  resize: vertical;\n}\n.nl-card-ask { justify-self: start; }\n.nl-note-figure {\n  display: grid;\n  gap: .55em;\n  margin-block: .7em;\n  padding: .7em .85em;\n  border: 1px solid #c8d7e5;\n  border-radius: 8px;\n  background: #f7fafd;\n  color: var(--nl-paper-ink);\n}\n.nl-note-figure h3, .nl-note-figure p { margin: 0; }\n.nl-figure-controls {\n  display: flex;\n  flex-wrap: wrap;\n  align-items: center;\n  gap: .35em .45em;\n}\n.nl-figure-option {\n  display: flex;\n  align-items: center;\n  gap: .45em;\n  min-width: 0;\n  max-width: 100%;\n}\n.nl-figure-arrow { color: #52719b; }\n.nl-figure-control.nl-paper-button {\n  border-color: #b6c9de;\n  color: #25496d;\n  background: #fff;\n  font-size: .88em;\n  white-space: normal;\n  overflow-wrap: anywhere;\n}\n.nl-figure-control.nl-paper-button[aria-pressed="true"] {\n  border-color: #759bc9;\n  color: #173e70;\n  background: #dceaf9;\n}\n.nl-figure-detail {\n  padding: .45em .6em;\n  border-radius: 4px;\n  background: #eaf2fa;\n  font-size: .9em;\n}\n.nl-figure-scale { color: #526174; font-size: .8em; }\n.nl-figure-row {\n  display: grid;\n  grid-template-columns: minmax(0, 1fr) minmax(1em, 3fr) minmax(0, 1fr);\n  gap: .45em;\n  align-items: center;\n  font-size: .9em;\n}\n.nl-figure-value { text-align: end; }\n.nl-figure-error { color: #a92d39; }\n.nl-paper-formula {\n  display: inline-block;\n  max-width: 100%;\n  vertical-align: baseline;\n  border-radius: 3px;\n  cursor: text;\n}\n.nl-paper-formula[data-display="block"] {\n  display: block;\n  margin-block: .35em;\n  overflow: auto;\n}\n.nl-paper-formula:has(math):hover { background: #edf4fd; }\n.nl-paper-formula:focus-visible {\n  outline: 2px solid var(--nl-paper-blue);\n  outline-offset: 2px;\n}\n.nl-paper-formula-source {\n  display: inline-block;\n  width: min(20em, 100%);\n  min-width: 5em;\n  max-width: 100%;\n  padding: 2px 4px;\n  border: 1px solid #94b3d9;\n  border-radius: 4px;\n  background: #f4f8fd;\n  color: var(--nl-paper-ink);\n  resize: none;\n  vertical-align: middle;\n  font: 15px/1.4 Consolas, monospace;\n}\n.nl-paper-formula[data-display="block"] .nl-paper-formula-source {\n  display: block;\n  width: 100%;\n  resize: vertical;\n}\n.nl-paper-markdown-toggle {\n  display: block;\n  margin: 2px 4px 0 auto;\n  padding: 2px 6px;\n  border: 1px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: var(--nl-paper-blue);\n  font: inherit;\n  cursor: pointer;\n}\n.nl-paper-markdown-toggle:focus-visible, .nl-paper-markdown-toggle:hover { background: #e7f1fe; }\n.nl-paper-sheet:not([data-tool="select"]):not([data-tool="text"]) .nl-paper-markdown-toggle {\n  visibility: hidden;\n}\n.nl-paper-markdown-source {\n  width: 100%;\n  min-height: 122px;\n  display: block;\n  resize: vertical;\n  padding: 6px 8px;\n  color: var(--nl-paper-ink);\n  background: #f4f8fd;\n  border: 0;\n  outline: 0;\n  font: 16px/1.5 Consolas, monospace;\n}\n.nl-paper-markdown-preview { white-space: normal; }\n.nl-paper-markdown-preview math[display="block"] {\n  margin-block: .45em;\n  overflow-x: auto;\n  max-width: 100%;\n}\n.nl-paper-edit pre {\n  padding: 5px 7px;\n  background: #eef3f8;\n  white-space: pre-wrap;\n}\n.nl-paper-move, .nl-paper-resize {\n  position: absolute;\n  display: none;\n  color: var(--nl-paper-blue);\n  background: #eff6ff;\n  border: 1px solid #94b3d9;\n  z-index: 4;\n  padding: 0;\n  touch-action: none;\n}\n.nl-paper-move {\n  left: -1px;\n  top: -22px;\n  height: 22px;\n  min-width: 26px;\n  border-radius: 4px 4px 0 0;\n  cursor: grab;\n}\n.nl-paper-resize {\n  right: -3px;\n  bottom: -3px;\n  width: 13px;\n  height: 13px;\n  border-radius: 3px;\n  cursor: nwse-resize;\n}\n.nl-paper-sheet[data-tool="select"] .nl-paper-block:is(.is-selected, :hover, :focus-within) :is(.nl-paper-move, .nl-paper-resize) {\n  display: block;\n}\n.nl-paper-object-image { display: block; width: 100%; object-fit: fill; user-select: none; }\n.nl-paper-file {\n  appearance: none;\n  display: block;\n  max-width: 100%;\n  margin: 4px;\n  padding: 5px 9px;\n  border: 1px solid var(--nl-paper-faint);\n  border-radius: 6px;\n  color: var(--nl-paper-blue);\n  background: #f4f7ff;\n  font: 15px/1.4 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n  cursor: pointer;\n}\n.nl-paper-reference {\n  display: block;\n  width: fit-content;\n  max-width: 100%;\n  margin: 1px 8px 4px;\n  color: #526b84;\n  font: 13px/1.35 system-ui, "Microsoft YaHei", sans-serif;\n  overflow-wrap: anywhere;\n}\n.nl-paper-reference:is(button) {\n  padding: 0;\n  border: 0;\n  background: transparent;\n  text-align: start;\n  cursor: pointer;\n}\n.nl-paper-live:not(:empty) {\n  margin: 0;\n  padding: 5px 9px;\n  color: var(--ntl-muted, #45617f);\n  background: var(--ntl-rail, #f8fafc);\n  border-top: 1px solid var(--ntl-line, var(--nl-paper-faint));\n}\n.nl-paper-live:empty { display: none; }\n';
 
   // lib/client.css
   var client_default = ':is(.ntl-notebook, .ntl-dialog, .ntl-toast) {\n  --ntl-surface: var(--dsw-alias-bg-layer-1, #fff);\n  --ntl-ink: var(--dsw-alias-label-primary, #1b2433);\n  --ntl-muted: var(--dsw-alias-label-secondary, #526174);\n  --ntl-line: var(--dsw-alias-border-l2, #dfe4ec);\n  --ntl-accent: var(--dsw-alias-state-business-primary, #315fb4);\n  --ntl-on-accent: var(--dsw-alias-label-primary-foreground, #fff);\n  --ntl-fill: var(--dsw-alias-button-primary-fill, #315fb4);\n  --ntl-fill-hover: var(--dsw-alias-button-primary-hover, #254b93);\n  --ntl-hover: var(--dsw-alias-interactive-bg-hover, #edf0f5);\n  --ntl-tint: color-mix(in srgb, var(--ntl-accent) 11%, var(--ntl-surface));\n  --ntl-rail: color-mix(in srgb, var(--ntl-ink) 3%, var(--ntl-surface));\n  --ntl-mat: color-mix(in srgb, var(--ntl-ink) 5%, var(--ntl-surface));\n  --ntl-error: var(--dsw-alias-state-error, #bb3043);\n  --ntl-font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;\n}\n\n.ntl-host, .ntl-notebook {\n  width: 100%;\n  height: 100%;\n  min-height: 0;\n  box-sizing: border-box;\n}\n\n.ntl-notebook {\n  display: flex;\n  flex-direction: column;\n  container-type: inline-size;\n  color: var(--ntl-ink);\n  background: var(--ntl-surface);\n  font: 13px/1.45 var(--ntl-font);\n}\n\n.ntl-notebook *, .ntl-notebook *::before, .ntl-notebook *::after {\n  box-sizing: border-box;\n}\n\n.ntl-notebook [hidden] { display: none; }\n\n.ntl-workspace-bar, .ntl-workspace-identity, .ntl-workspace-actions,\n.ntl-pagebar, .ntl-bookpick, .ntl-placement, .ntl-workspace-footer {\n  display: flex;\n  align-items: center;\n}\n\n.ntl-workspace-bar {\n  position: relative;\n  z-index: 14;\n  justify-content: space-between;\n  flex-wrap: wrap;\n  gap: 6px 12px;\n  min-height: 50px;\n  padding: 8px 14px;\n  border-bottom: 1px solid var(--ntl-line);\n}\n\n.ntl-workspace-identity { gap: 8px; }\n.ntl-workspace-identity strong { font-size: 14px; font-weight: 650; white-space: nowrap; }\n.ntl-workspace-actions { gap: 6px; flex-wrap: wrap; }\n\n.ntl-workspace-bar button, .ntl-menu summary, .ntl-menu-items button,\n.ntl-placement button, .ntl-status button, .ntl-dialog button, .ntl-launch {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  min-height: 30px;\n  padding: 4px 8px;\n  border: 1px solid transparent;\n  border-radius: 6px;\n  background: transparent;\n  color: inherit;\n  cursor: pointer;\n  font: inherit;\n  white-space: nowrap;\n}\n\n.ntl-workspace-bar button:hover, .ntl-menu summary:hover, .ntl-menu[open] > summary,\n.ntl-menu-items button:hover, .ntl-placement button:hover, .ntl-status button:hover,\n.ntl-dialog button:hover, .ntl-tree:hover, .ntl-launch:hover {\n  background: var(--ntl-hover, var(--dsw-alias-interactive-bg-hover, #edf0f5));\n}\n\n:is(.ntl-workspace-bar, .ntl-placement, .ntl-dialog) button.ntl-primary {\n  border-color: var(--ntl-fill);\n  background: var(--ntl-fill);\n  color: var(--ntl-on-accent);\n  font-weight: 600;\n}\n\n:is(.ntl-workspace-bar, .ntl-placement, .ntl-dialog) button.ntl-primary:hover {\n  background: var(--ntl-fill-hover);\n  border-color: var(--ntl-fill-hover);\n}\n\n.ntl-dialog button:not(.ntl-primary), .ntl-placement button:not(.ntl-primary) {\n  border-color: var(--ntl-line);\n}\n\n.ntl-dialog button:disabled { opacity: .48; cursor: default; }\n\n.ntl-new-label { display: inline-flex; align-items: center; gap: 5px; }\n.ntl-new-label [aria-hidden] { font-size: 16px; line-height: 1; }\n.ntl-launch { margin-inline: 6px; }\n\n.ntl-workspace-bar .ntl-icon-button, .ntl-menu-icon > summary {\n  width: 30px;\n  min-width: 30px;\n  padding: 0;\n}\n\n.ntl-icon-button[aria-expanded="true"] {\n  background: var(--ntl-tint);\n  color: var(--ntl-accent);\n}\n\n.ntl-icon-library {\n  position: relative;\n  display: block;\n  width: 16px;\n  height: 13px;\n  border: 1.5px solid currentColor;\n  border-radius: 3px;\n}\n\n.ntl-icon-library::after {\n  position: absolute;\n  inset: 0 auto 0 4px;\n  width: 1.5px;\n  background: currentColor;\n  content: "";\n}\n\n:is(.ntl-notebook, .ntl-dialog) :is(button, summary, select, input, textarea):focus-visible,\n.ntl-pagebar h2:focus-visible {\n  outline: 2px solid var(--ntl-accent);\n  outline-offset: 2px;\n}\n\n.ntl-language, .ntl-bookpick select, .ntl-search input,\n.ntl-dialog :is(input, select, textarea) {\n  min-width: 0;\n  max-width: 100%;\n  min-height: 30px;\n  padding: 4px 7px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 6px;\n  background: var(--ntl-surface);\n  color: var(--ntl-ink);\n  font: inherit;\n}\n\n.ntl-language { cursor: pointer; color: var(--ntl-muted); background: var(--ntl-rail); }\n.ntl-language:disabled { opacity: .5; cursor: default; }\n\n.ntl-workspace-grid {\n  flex: 1;\n  display: grid;\n  grid-template-columns: clamp(160px, 25%, 220px) minmax(0, 1fr);\n  min-height: 0;\n}\n\n.ntl-notebook:is([data-library="closed"], [data-layout="compact"]) .ntl-workspace-grid {\n  grid-template-columns: minmax(0, 1fr);\n}\n\n.ntl-library {\n  display: flex;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  border-inline-end: 1px solid var(--ntl-line);\n  background: var(--ntl-rail);\n}\n\n.ntl-nav-head {\n  position: relative;\n  z-index: 10;\n  display: grid;\n  gap: 8px;\n  padding: 12px 10px 8px;\n}\n\n.ntl-bookpick { gap: 4px; }\n.ntl-bookpick select {\n  flex: 1;\n  width: 100%;\n  font-weight: 600;\n}\n\n.ntl-search { position: relative; color: var(--ntl-muted); }\n\n.ntl-search::before, .ntl-search::after {\n  position: absolute;\n  inset-inline-start: 10px;\n  pointer-events: none;\n  content: "";\n}\n\n.ntl-search::before {\n  top: 10px;\n  width: 8px;\n  height: 8px;\n  border: 1.4px solid currentColor;\n  border-radius: 50%;\n}\n\n.ntl-search::after {\n  top: 17px;\n  inset-inline-start: 17px;\n  width: 4px;\n  height: 1.4px;\n  transform: rotate(45deg);\n  transform-origin: left;\n  background: currentColor;\n}\n\n.ntl-search input { width: 100%; padding-inline-start: 27px; }\n.ntl-search input::placeholder { color: var(--ntl-muted); }\n\n.ntl-nav-scroll {\n  flex: 1;\n  min-height: 0;\n  overflow: auto;\n  overscroll-behavior: contain;\n  padding: 0 10px 12px;\n}\n\n.ntl-nav-label {\n  padding: 9px 8px 4px;\n  color: var(--ntl-muted);\n  font-size: 11px;\n  font-weight: 650;\n}\n\n.ntl-sections-wrap { margin-bottom: 8px; }\n\n.ntl-sections, .ntl-pages { display: grid; gap: 2px; }\n\n.ntl-tree {\n  display: flex;\n  align-items: center;\n  gap: 6px;\n  width: 100%;\n  min-width: 0;\n  min-height: 32px;\n  padding: 5px 7px;\n  padding-inline-start: calc(7px + var(--ntl-indent, 0px));\n  border: 0;\n  border-inline-start: 2px solid transparent;\n  border-radius: 5px;\n  background: transparent;\n  color: var(--ntl-ink);\n  cursor: pointer;\n  text-align: start;\n  font: inherit;\n}\n\n.ntl-tree[aria-current] {\n  border-inline-start-color: var(--ntl-accent);\n  background: var(--ntl-tint);\n  color: var(--ntl-ink);\n  font-weight: 650;\n}\n\n.ntl-tree:is(.ntl-section-row, .ntl-page-row)::before {\n  width: 10px;\n  height: 12px;\n  flex: 0 0 10px;\n  border: 1px solid currentColor;\n  border-radius: 2px;\n  opacity: .65;\n  content: "";\n}\n\n.ntl-tree.ntl-section-row::before { height: 10px; border-inline-start-width: 3px; }\n.ntl-tree[data-kind="group"]::before { border-top-width: 3px; }\n\n.ntl-row-title, .ntl-result-path, .ntl-page-section {\n  display: block;\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.ntl-result { display: grid; min-width: 0; }\n.ntl-result-path { color: var(--ntl-muted); font-size: 11px; font-weight: 400; }\n.ntl-muted { margin: 6px 8px; color: var(--ntl-muted); }\n\n.ntl-document {\n  display: flex;\n  flex-direction: column;\n  min-width: 0;\n  min-height: 0;\n  overflow: hidden;\n}\n\n.ntl-pagebar {\n  position: relative;\n  z-index: 7;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 8px;\n  min-width: 0;\n  padding: 12px 15px 10px;\n  border-bottom: 1px solid var(--ntl-line);\n}\n\n.ntl-pagebar:empty { display: none; }\n.ntl-page-heading { display: grid; gap: 2px; min-width: 0; }\n.ntl-page-section { color: var(--ntl-muted); font-size: 11px; }\n\n.ntl-pagebar h2 {\n  display: -webkit-box;\n  overflow: hidden;\n  margin: 0;\n  overflow-wrap: anywhere;\n  font-size: 20px;\n  font-weight: 665;\n  line-height: 1.28;\n  -webkit-box-orient: vertical;\n  -webkit-line-clamp: 2;\n}\n\n.ntl-page-tags {\n  display: flex;\n  gap: 4px;\n  flex-wrap: wrap;\n  min-width: 0;\n  margin-top: 3px;\n}\n\n.ntl-tag {\n  max-width: 100%;\n  overflow: hidden;\n  padding: 1px 6px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 4px;\n  color: var(--ntl-muted);\n  font-size: 11px;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n\n.ntl-paper-root { flex: 1; min-width: 0; min-height: 0; overflow: hidden; }\n\n.ntl-placement {\n  gap: 6px;\n  flex-wrap: wrap;\n  padding: 6px 10px;\n  border-bottom: 1px solid var(--ntl-line);\n  background: var(--ntl-tint);\n}\n\n.ntl-placement-hint { margin-inline-end: auto; }\n\n.ntl-empty {\n  display: grid;\n  justify-items: center;\n  gap: 8px;\n  padding: 40px 18px;\n  color: var(--ntl-muted);\n  text-align: center;\n}\n\n.ntl-empty h2 { margin: 0; color: var(--ntl-ink); font-size: 17px; }\n.ntl-empty p { margin: 0; }\n\n.ntl-empty-sheet {\n  width: 25px;\n  height: 31px;\n  border: 1px solid currentColor;\n  border-radius: 4px;\n}\n\n.ntl-workspace-footer {\n  justify-content: space-between;\n  gap: 2px 8px;\n  flex-wrap: wrap;\n  min-height: 34px;\n  padding: 1px 8px 1px 13px;\n  border-top: 1px solid var(--ntl-line);\n  background: var(--ntl-rail);\n}\n\n.ntl-status {\n  display: flex;\n  align-items: center;\n  gap: 4px 6px;\n  flex-wrap: wrap;\n  min-width: 0;\n  color: var(--ntl-muted);\n  font-size: 11px;\n  overflow-wrap: anywhere;\n}\n\n.ntl-status::before {\n  display: block;\n  width: 6px;\n  height: 6px;\n  flex: 0 0 6px;\n  border-radius: 50%;\n  background: currentColor;\n  content: "";\n}\n\n.ntl-status[data-state="saved"]::before { background: #479276; }\n.ntl-status[data-state="pending"]::before { background: #ba842c; }\n.ntl-status[data-state="error"]::before, .ntl-error { color: var(--ntl-error); }\n.ntl-status button { border-color: var(--ntl-line); }\n.ntl-paper-controls { margin-inline-start: auto; }\n.ntl-paper-controls:empty { display: none; }\n\n.ntl-menu { position: relative; min-width: 0; }\n\n.ntl-menu > summary {\n  gap: 6px;\n  color: var(--ntl-muted);\n  list-style: none;\n}\n\n.ntl-menu > summary::-webkit-details-marker { display: none; }\n\n.ntl-menu > summary::after {\n  width: 6px;\n  height: 6px;\n  margin-block: -3px 0;\n  border: solid currentColor;\n  border-width: 0 1px 1px 0;\n  transform: rotate(45deg);\n  content: "";\n}\n\n.ntl-menu-items {\n  position: absolute;\n  inset-block-start: calc(100% + 4px);\n  inset-inline-end: 0;\n  z-index: 19;\n  display: grid;\n  min-width: max(100%, 128px);\n  max-height: min(55vh, 420px);\n  overflow: auto;\n  padding: 4px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 8px;\n  background: var(--ntl-surface);\n  box-shadow: 0 6px 20px #121e342b;\n}\n\n.ntl-menu-items button { justify-content: flex-start; text-align: start; }\n\n.ntl-menu-icon .ntl-menu-label { display: none; }\n\n.ntl-menu-icon > summary::after {\n  width: auto;\n  height: auto;\n  margin: 0;\n  border: 0;\n  transform: none;\n  font-weight: 700;\n  letter-spacing: .08em;\n  content: "\xB7\xB7\xB7";\n}\n\n.ntl-dialog {\n  width: min(560px, calc(100vw - 28px));\n  max-height: min(80vh, 820px);\n  overflow: auto;\n  margin: auto;\n  padding: 18px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 10px;\n  background: var(--ntl-surface);\n  color: var(--ntl-ink);\n  box-shadow: 0 14px 42px #2030473d;\n  font: 14px/1.47 var(--ntl-font);\n}\n\n.ntl-dialog::backdrop { background: #101d3560; }\n.ntl-dialog h2 { margin: 0 0 12px; font-size: 18px; }\n.ntl-dialog-content, .ntl-dialog-content label { display: grid; gap: 8px; }\n.ntl-dialog-content p { margin: 3px 0; }\n.ntl-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; }\n.ntl-dialog-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; overflow-wrap: anywhere; }\n\n.ntl-materials, .ntl-material { display: grid; gap: 8px; min-width: 0; }\n\n.ntl-material {\n  padding: 8px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 6px;\n  background: var(--ntl-rail);\n}\n\n.ntl-material img {\n  width: auto;\n  max-width: 100%;\n  max-height: 35vh;\n  object-fit: contain;\n  object-position: left center;\n}\n\n.ntl-material textarea { resize: vertical; }\n\n.ntl-toast {\n  position: fixed;\n  z-index: 2147483647;\n  inset: auto 18px 18px auto;\n  max-width: min(470px, calc(100vw - 40px));\n  box-sizing: border-box;\n  padding: 10px 14px;\n  border: 1px solid var(--ntl-line);\n  border-radius: 8px;\n  background: var(--ntl-surface);\n  color: var(--ntl-ink);\n  box-shadow: 0 5px 18px #20304738;\n  font: 14px/1.4 var(--ntl-font);\n}\n\n.ntl-toast-error { color: var(--ntl-error); }\n\n[data-composer-input].ntl-composer-ghost:not([data-composer-composing]) p:last-child::after {\n  content: var(--dsh-composer-hint, var(--ntl-composer-ghost));\n  color: var(--dsw-alias-label-caption, GrayText);\n  pointer-events: none;\n  user-select: none;\n}\n\n[data-composer-input].ntl-composer-ghost[data-ntl-ghost-blank-line] p:last-child { position: relative; }\n\n[data-composer-input].ntl-composer-ghost[data-ntl-ghost-blank-line] p:last-child::after {\n  position: absolute;\n  inset: 0 auto auto 0;\n  width: 100%;\n}\n\n.ntl-composer-ghost + [data-composer-placeholder] { visibility: hidden; }\n\n@container (max-width: 450px) {\n  .ntl-workspace-bar { padding-inline: 8px; }\n  .ntl-workspace-identity { gap: 5px; }\n  .ntl-pagebar { padding-inline: 10px; }\n  .ntl-pagebar h2 { font-size: 18px; }\n  .ntl-resource-menu .ntl-menu-label, .ntl-page-menu .ntl-menu-label { display: none; }\n\n  :is(.ntl-resource-menu, .ntl-page-menu) > summary {\n    width: 30px;\n    padding: 0;\n  }\n\n  :is(.ntl-resource-menu, .ntl-page-menu) > summary::after {\n    width: auto;\n    height: auto;\n    margin: 0;\n    border: 0;\n    transform: none;\n    font-weight: 700;\n    letter-spacing: .08em;\n    content: "\xB7\xB7\xB7";\n  }\n}\n';
@@ -70776,8 +70971,8 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
     const needActive = (sessionId) => {
       if (!sessionId || getSessionId() !== sessionId) throw new Error(t("\u5F53\u524D\u4F1A\u8BDD\u5DF2\u5207\u6362\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9\u6750\u6599\u3002"));
     };
-    function setPending(sessionId, items) {
-      if (items.length) pending.set(sessionId, items);
+    function setPending(sessionId, items2) {
+      if (items2.length) pending.set(sessionId, items2);
       else pending.delete(sessionId);
       for (const listener of listeners.get(sessionId) ?? []) listener();
     }
@@ -70868,7 +71063,7 @@ ${[heading2, heading2.map(() => "---"), ...values2].map(rowLine).join("\n")}
             lastPage.current = { sessionId, workspace, pageId };
           },
           getPending: () => pending.get(sessionId) ?? [],
-          setPending: (items) => setPending(sessionId, items),
+          setPending: (items2) => setPending(sessionId, items2),
           subscribePending: (listener) => subscribePending(sessionId, listener),
           openWeb(url) {
             needActive(sessionId);

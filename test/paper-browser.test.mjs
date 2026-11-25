@@ -177,3 +177,111 @@ test('a saved seven-block page grows at 100% and 125%, and the Agent can inspect
       await writeFile(join(screenshots, 'note-layout-after-review.png'), captures[1])
     }
   })
+
+test('Agent note figures work alongside LaTeX and tables, and appear in exported previews',
+  { skip: !executablePath, timeout: 45_000 }, async t => {
+    const directory = await mkdtemp(join(root, '.note-browser-'))
+    t.after(() => rm(directory, { recursive: true, force: true }))
+    const cwd = join(directory, 'project')
+    const notes = createStore({ dataDir: directory })
+    const tools = new Map()
+    registerNoteTools({ register(tool) { tools.set(tool.name, tool) } }, notes)
+    const create = tools.get('note_create')
+    const examples = [...create.parameters.properties.markdown.description.matchAll(/```note-figure\n[\s\S]*?\n```/g)]
+      .map(match => match[0])
+    assert.equal(examples.length, 2)
+    assert.match(create.description, /major sticking point.*labeled figure/)
+    const markdown = [
+      '## Why the sampling rule matters',
+      'For independent draws, $P(AA)=P(A)^2$.',
+      '| Rule | Probability of AA |\n| --- | --- |\n| Independent | $\\frac{1}{4}$ |',
+      '$$\n\\begin{aligned} P(AA)&=P(A)^2\\\\&=\\frac{1}{4} \\end{aligned}\n$$',
+      ...examples,
+    ].join('\n\n')
+    const write = await create.execute({ title: 'Two draws', markdown, layout: 'auto' }, {
+      agent: { session: { header: { cwd } } }, signal: new AbortController().signal,
+    })
+    assert.match(write.nextStep, /rendered math.*figure state/)
+    const { state } = await notes.read(cwd)
+    const page = state.pages[0]
+    assert.equal(page.blocks[0].markdown, markdown)
+
+    const browser = await chromium.launch({ executablePath, headless: true })
+    t.after(() => browser.close())
+    const tab = await browser.newPage({ viewport: { width: 1050, height: 850 } })
+    const bundle = await build({
+      stdin: { contents: 'export { mountPaper, exportPaperPage } from "./lib/paper.js"; ' +
+        'export { setLanguage } from "./lib/i18n.js"; ' +
+        'export { exportPageMarkdown, importPageMarkdown } from "./lib/notebooks.js";', resolveDir: root },
+      bundle: true, format: 'iife', globalName: 'TestNotes', platform: 'browser', write: false,
+    })
+    await tab.setContent('<!doctype html><div id="paper" style="width:100%;height:790px;display:flex;flex-direction:column"></div>')
+    await tab.addStyleTag({ content: await readFile(join(root, 'lib', 'paper.css'), 'utf8') })
+    await tab.addScriptTag({ content: bundle.outputFiles[0].text })
+    await tab.evaluate(page => {
+      TestNotes.setLanguage('en')
+      window.paper = TestNotes.mountPaper(document.querySelector('#paper'), { page })
+    }, page)
+
+    assert.equal(await tab.locator('.nl-paper-markdown-preview math').count(), 3)
+    assert.equal(await tab.locator('.katex-error').count(), 0)
+    assert.equal(await tab.locator('td math').count(), 1)
+    assert.equal(await tab.locator('math[display="block"] mtable').count(), 1)
+    const flow = tab.getByRole('region', { name: 'Two draws', exact: true })
+    const second = flow.getByRole('button', { name: 'Second draw' })
+    await second.click()
+    assert.equal(await second.getAttribute('aria-pressed'), 'true')
+    assert.match(await flow.locator('.nl-figure-detail').textContent(), /does not change these probabilities/)
+
+    const chart = tab.getByRole('region', { name: 'Probability of AA and AB' })
+    const barValues = chart.locator('.nl-figure-value')
+    assert.deepEqual(await barValues.allTextContents(), ['0%', '50%'])
+    const independent = chart.getByRole('button', { name: 'Independent draws' })
+    await independent.press('Space')
+    assert.equal(await independent.getAttribute('aria-pressed'), 'true')
+    assert.deepEqual(await barValues.allTextContents(), ['25%', '25%'])
+    assert.deepEqual(await chart.locator('.nl-card-fill').evaluateAll(nodes => nodes.map(node => node.style.width)), ['25%', '25%'])
+    assert.equal(await tab.evaluate(() => window.paper.getPage().blocks[0].markdown), markdown)
+
+    const exported = await tab.evaluate(async page => {
+      const [block] = page.blocks
+      const { markdown } = TestNotes.exportPageMarkdown({
+        ...page, blocks: [{ ...block, markdown: block.markdown + '\n\nPress <kbd>Tab</kbd> to focus a step.' }],
+      })
+      const imported = TestNotes.importPageMarkdown(markdown, { id: 'round-trip', sectionId: page.sectionId })
+      const bitmap = await createImageBitmap(await TestNotes.exportPaperPage(document, imported))
+      const canvas = document.createElement('canvas')
+      canvas.width = bitmap.width
+      canvas.height = bitmap.height
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(bitmap, 0, 0)
+      bitmap.close()
+      const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      let paintedBar = false
+      for (let offset = 0; offset < data.length; offset += 4) {
+        if (data[offset] === 52 && data[offset + 1] === 107 && data[offset + 2] === 171) {
+          paintedBar = true
+          break
+        }
+      }
+      return { markdown: imported.blocks[0].markdown, paintedBar }
+    }, page)
+    assert.ok(exported.paintedBar, 'The preview includes the bar, not just its text label.')
+    assert.ok(examples.every(example => exported.markdown.includes(example)))
+    assert.ok(!exported.markdown.includes('<kbd>'))
+
+    if (process.env.DSH_NOTE_TEST_SCREENSHOTS) {
+      await tab.locator('.nl-paper-markdown-preview').screenshot({
+        path: join(process.env.DSH_NOTE_TEST_SCREENSHOTS, 'note-interactive-figures.png'),
+      })
+    }
+
+    const toggle = tab.locator('.nl-paper-markdown-toggle')
+    await toggle.click()
+    const editor = tab.locator('.nl-paper-markdown-source')
+    await editor.fill(markdown.replace('"values":[25,25]', '"values":[25]'))
+    await toggle.click()
+    assert.equal(await tab.locator('.nl-figure-error').count(), 1)
+    assert.match(await tab.locator('code.language-note-figure').textContent(), /"values":\[25\]/)
+    assert.equal(await flow.count(), 1)
+  })

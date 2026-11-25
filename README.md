@@ -11,19 +11,19 @@
 在 DSH Desktop 的插件管理中选择官方 npm 注册表，搜索 `dsh-note-to-learn`。如果已经注册了 `dsh` 命令，也可以完全退出 Desktop 后在 PowerShell 中运行：
 
 ```powershell
-dsh plugin --profile desktop add dsh-note-to-learn@0.1.7
+dsh plugin --profile desktop add dsh-note-to-learn@0.1.8
 ```
 
-[查看 npm 安装包](https://www.npmjs.com/package/dsh-note-to-learn/v/0.1.7)
+[查看 npm 安装包](https://www.npmjs.com/package/dsh-note-to-learn/v/0.1.8)
 
 ### 从 GitHub 安装
 
-从 [GitHub Releases](https://github.com/shiyan688/dsh-note-to-learn/releases) 下载 `dsh-note-to-learn-0.1.7.tgz`。插件面向官方 DSH Desktop 0.2.2 候选版本。先启动一次 Desktop 初始化，再在插件管理中添加下载的安装包。
+从 [GitHub Releases](https://github.com/shiyan688/dsh-note-to-learn/releases) 下载 `dsh-note-to-learn-0.1.8.tgz`。插件面向官方 DSH Desktop 0.2.2 候选版本。先启动一次 Desktop 初始化，再在插件管理中添加下载的安装包。
 
 如果已通过 Desktop 注册 `dsh` 命令，也可以完全退出 Desktop，在安装包所在目录执行以下命令。
 
 ```powershell
-dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.7.tgz'
+dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.8.tgz'
 ```
 
 重新打开 Desktop，进入一个有工作区的会话，在右侧栏的工具列表选择 **学习笔记**。左侧栏底部也提供 **学习笔记** 入口。
@@ -42,15 +42,19 @@ dsh plugin --profile desktop add '.\dsh-note-to-learn-0.1.7.tgz'
 
 在普通富文本块中输入或粘贴 `$...$` 行内公式、`$$...$$` 独立公式，即可直接显示。单击公式可以修改 LaTeX。
 
+点击纸面工具栏的 **附件** 插入本地图片或文件。也可以把图片文件拖到纸面的指定位置，或在普通文字块里粘贴剪贴板里的图片。网页和 PDF 的区域截图可以直接存为图片块。
+
 从 **页面操作 → 插入两张卡片** 添加概率练习。切换不放回和独立抽取，比较四种结果的概率，记下总结与疑问。**加入 DSH 草稿** 会把练习状态和你的疑问放进可编辑草稿。
+
+**页面操作**里还可以插入可点击流程图或交互条形图。点击流程图的步骤查看解释，切换条形图的条件就在同一刻度下比较结果。用 **编辑 Markdown** 修改 `note-figure` 代码块里的数据。Markdown 导出保留数据，Agent 的整页截图和 PDF 导出显示默认状态。
 
 笔记本、分区、子页、页面链接、标签、全文搜索、页面历史、回收站和备份。纸面支持自由排布、富文本、表格、清单、附件、压感笔、荧光、橡皮、形状和撤销重做。图像 OCR 由本机识别简体中文或英语，结果可检索和修改。PDF 导出保留视觉布局，Markdown 和 JSON 备份保留可编辑内容。带素材的 Markdown 导出为 ZIP，里面包含正文和附件。
 
 数据保存在 `$DSH_HOME/storages/dsh-note-to-learn`，按会话工作目录归档。同一工作目录里的会话共享笔记。恢复备份会替换当前工作区的笔记，备份文件包含正文、附件和回收站内容，页面历史留在本机数据目录。云同步、多人协作和录音转写留作后续版本。
 
-DSH Agent 可以用 `note_list` 浏览目录和回收站，用 `note_search` 和 `note_read` 查找并读取笔记。`note_create` 和 `note_edit` 的工具说明包含 Markdown、LaTeX 公式和表格混排示例。`note_manage` 支持新建笔记本和分区、重命名、移动或复制页面，以及移入回收站与恢复。用 `note_edit` 修改或删除单个内容块时，先读取该块的最新 `blockVersion`。成功写入会返回已保存的 `revision`。
+DSH Agent 可以用 `note_list` 浏览目录和回收站，用 `note_search` 和 `note_read` 查找并读取笔记。`note_create` 和 `note_edit` 会引导 Agent 用可渲染的 LaTeX 写公式，说明符号和假设，并给每个主要难点配小图和例子。工具参数中有混排和交互图示例。`note_manage` 支持新建笔记本和分区、重命名、移动或复制页面，以及移入回收站与恢复。用 `note_edit` 修改或删除单个内容块时，先读取该块的最新 `blockVersion`。成功写入会返回已保存的 `revision`。
 
-Agent 完成编辑后会收到视觉检查步骤。它用 `note_read({ pageId, preview: true })` 读取同一修订的整页渲染图，检查重叠、截断和表格可读性，修正后再取图核对。运行时需要在 DSH Desktop 或网页客户端打开该会话，并使用支持图片输入的模型。
+Agent 完成编辑后会收到视觉检查步骤。它用 `note_read({ pageId, preview: true })` 读取同一修订的整页渲染图，检查公式渲染、图示标签和表格可读性，修正后再取图核对。运行时需要在 DSH Desktop 或网页客户端打开该会话，并使用支持图片输入的模型。
 
 ## 开发
 

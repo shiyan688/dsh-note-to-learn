@@ -264,6 +264,60 @@
   resize: vertical;
 }
 .nl-card-ask { justify-self: start; }
+.nl-note-figure {
+  display: grid;
+  gap: .55em;
+  margin-block: .7em;
+  padding: .7em .85em;
+  border: 1px solid #c8d7e5;
+  border-radius: 8px;
+  background: #f7fafd;
+  color: var(--nl-paper-ink);
+}
+.nl-note-figure h3, .nl-note-figure p { margin: 0; }
+.nl-figure-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35em .45em;
+}
+.nl-figure-option {
+  display: flex;
+  align-items: center;
+  gap: .45em;
+  min-width: 0;
+  max-width: 100%;
+}
+.nl-figure-arrow { color: #52719b; }
+.nl-figure-control.nl-paper-button {
+  border-color: #b6c9de;
+  color: #25496d;
+  background: #fff;
+  font-size: .88em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.nl-figure-control.nl-paper-button[aria-pressed="true"] {
+  border-color: #759bc9;
+  color: #173e70;
+  background: #dceaf9;
+}
+.nl-figure-detail {
+  padding: .45em .6em;
+  border-radius: 4px;
+  background: #eaf2fa;
+  font-size: .9em;
+}
+.nl-figure-scale { color: #526174; font-size: .8em; }
+.nl-figure-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(1em, 3fr) minmax(0, 1fr);
+  gap: .45em;
+  align-items: center;
+  font-size: .9em;
+}
+.nl-figure-value { text-align: end; }
+.nl-figure-error { color: #a92d39; }
 .nl-paper-formula {
   display: inline-block;
   max-width: 100%;
